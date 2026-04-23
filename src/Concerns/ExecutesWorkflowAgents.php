@@ -4,6 +4,10 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Concerns;
 
+use Prism\Prism\ValueObjects\Media\Text;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\Streaming\StreamCollector;
 use Prism\Prism\Text\PendingRequest;
 use Prism\Prism\Text\Response;
@@ -204,9 +208,88 @@ trait ExecutesWorkflowAgents
     private function messagesToArray(array $messages): array
     {
         return array_map(
-            callback: static fn (object $message): array => method_exists($message, 'toArray') ? $message->toArray() : [ 'type' => 'unknown' ],
+            callback: fn (object $message): array => $this->serializeMessage($message),
             array: $messages,
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeMessage(object $message): array
+    {
+        return match (true) {
+            $message instanceof UserMessage => $this->serializeUserMessage($message),
+            $message instanceof AssistantMessage => $this->serializeAssistantMessage($message),
+            $message instanceof ToolResultMessage => $message->toArray(),
+            default => method_exists($message, 'toArray') ? $message->toArray() : [ 'type' => 'unknown' ],
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeUserMessage(UserMessage $message): array
+    {
+        $serializedMessage = [
+            'type' => 'user',
+            'content' => $message->content,
+        ];
+
+        $additionalContent = $this->normalizeAdditionalContent($message->additionalContent, $message->content);
+
+        if ($additionalContent !== []) {
+            $serializedMessage[ 'additional_content' ] = $additionalContent;
+        }
+
+        if ($message->additionalAttributes !== []) {
+            $serializedMessage[ 'additional_attributes' ] = $message->additionalAttributes;
+        }
+
+        return $serializedMessage;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeAssistantMessage(AssistantMessage $message): array
+    {
+        $serializedMessage = [
+            'type' => 'assistant',
+            'content' => $message->content,
+            'tool_calls' => array_map(static fn ($toolCall): array => $toolCall->toArray(), $message->toolCalls),
+        ];
+
+        $additionalContent = $this->normalizeAdditionalContent($message->additionalContent, $message->content);
+
+        if ($additionalContent !== []) {
+            $serializedMessage[ 'additional_content' ] = $additionalContent;
+        }
+
+        return $serializedMessage;
+    }
+
+    /**
+     * @param array<int, mixed> $additionalContent
+     * @return array<int, mixed>
+     */
+    private function normalizeAdditionalContent(array $additionalContent, string $content): array
+    {
+        $normalizedContent = [];
+
+        foreach ($additionalContent as $contentPart) {
+
+            if ($contentPart instanceof Text && $contentPart->text === $content) {
+                continue;
+            }
+
+            $normalizedContent[] = method_exists($contentPart, 'toArray')
+                ? $contentPart->toArray()
+                : $contentPart;
+
+        }
+
+        return $normalizedContent;
     }
 
     private function finalizationPrompt(array $outputSchema): string

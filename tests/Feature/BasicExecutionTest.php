@@ -23,6 +23,8 @@ final class BasicExecutionTest extends TestCase
         $this->assertSame('Welcome aboard!', $result->agents[ 'greeting' ]->output);
         $this->assertCount(3, $result->agents[ 'greeting' ]->messages);
         $this->assertSame('user', $result->agents[ 'greeting' ]->messages[ 0 ][ 'type' ]);
+        $this->assertArrayNotHasKey('additional_content', $result->agents[ 'greeting' ]->messages[ 0 ]);
+        $this->assertArrayNotHasKey('additional_attributes', $result->agents[ 'greeting' ]->messages[ 0 ]);
         $this->assertSame('assistant', $result->agents[ 'greeting' ]->messages[ 1 ][ 'type' ]);
         $this->assertSame('tool_result', $result->agents[ 'greeting' ]->messages[ 2 ][ 'type' ]);
         $this->assertSame(FinalizeSuccessTool::name(), $result->agents[ 'greeting' ]->messages[ 2 ][ 'tool_results' ][ 0 ][ 'tool_name' ]);
