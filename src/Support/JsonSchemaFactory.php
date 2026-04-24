@@ -13,6 +13,14 @@ use Throwable;
 
 final class JsonSchemaFactory
 {
+    private const JSON_SCHEMA_OBJECT_KEYS = [
+        '$defs',
+        'definitions',
+        'dependentSchemas',
+        'patternProperties',
+        'properties',
+    ];
+
     /**
      * @param array<string, mixed> $definition
      */
@@ -20,7 +28,7 @@ final class JsonSchemaFactory
     {
         try {
 
-            return Schema::import(self::toObject($definition));
+            return Schema::import(self::schemaToObject($definition));
 
         } catch (Throwable $throwable) {
 
@@ -54,7 +62,7 @@ final class JsonSchemaFactory
     {
         try {
 
-            $schema->in(self::toObject($values));
+            $schema->in(self::payloadToObject($values, forceObject: true));
 
         } catch (InvalidValue $invalidValue) {
 
@@ -67,20 +75,43 @@ final class JsonSchemaFactory
         }
     }
 
-    private static function toObject(mixed $value): mixed
+    private static function schemaToObject(mixed $value, ?string $key = null): mixed
     {
         if (!is_array($value)) {
             return $value;
         }
 
+        if ($value === [] && in_array($key, self::JSON_SCHEMA_OBJECT_KEYS, true)) {
+            return new stdClass();
+        }
+
         if (array_is_list($value)) {
-            return array_map(self::toObject(...), $value);
+            return array_map(static fn (mixed $nestedValue): mixed => self::schemaToObject($nestedValue), $value);
         }
 
         $objectValue = new stdClass();
 
         foreach ($value as $key => $nestedValue) {
-            $objectValue->{$key} = self::toObject($nestedValue);
+            $objectValue->{$key} = self::schemaToObject($nestedValue, (string) $key);
+        }
+
+        return $objectValue;
+    }
+
+    private static function payloadToObject(mixed $value, bool $forceObject = false): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        if (!$forceObject && array_is_list($value)) {
+            return array_map(static fn (mixed $nestedValue): mixed => self::payloadToObject($nestedValue), $value);
+        }
+
+        $objectValue = new stdClass();
+
+        foreach ($value as $key => $nestedValue) {
+            $objectValue->{$key} = self::payloadToObject($nestedValue);
         }
 
         return $objectValue;

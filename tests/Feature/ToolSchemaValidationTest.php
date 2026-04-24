@@ -8,6 +8,7 @@ use Prism\Prism\Testing\TextResponseFake;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\ToolCall;
+use Superwire\Laravel\Support\JsonSchemaFactory;
 use Superwire\Laravel\Tests\Fakes\ScriptedToolLoopProvider;
 use Superwire\Laravel\Tests\TestCase;
 use Superwire\Laravel\Tools\AbstractTool;
@@ -15,9 +16,24 @@ use Superwire\Laravel\Tools\Internal\FinalizeSuccessTool;
 use Superwire\Laravel\Tools\WorkflowBoundInput;
 use Superwire\Laravel\Tools\WorkflowToolInput;
 use Superwire\Laravel\Workflow;
+use Swaggest\JsonSchema\Schema;
 
 final class ToolSchemaValidationTest extends TestCase
 {
+    public function test_empty_object_tool_input_schema_can_be_imported_and_validated(): void
+    {
+        $schema = JsonSchemaFactory::fromArray([
+            'additionalProperties' => false,
+            'properties' => [],
+            'required' => [],
+            'type' => 'object',
+        ], 'empty tool input schema');
+
+        JsonSchemaFactory::validate($schema, [], 'empty tool input');
+
+        $this->assertInstanceOf(Schema::class, $schema);
+    }
+
     public function test_tool_registers_only_agent_input_schema_and_returns_failed_tool_result_for_invalid_arguments(): void
     {
         config()->set('superwire.runtime.stream', false);

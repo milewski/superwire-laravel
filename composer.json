@@ -29,22 +29,8 @@
     "scripts": {
         "test": "phpunit"
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../superwire-php",
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "config": {
-        "audit": {
-            "block-insecure": false
-        }
-    },
     "extra": {
         "laravel": {
             "providers": [
