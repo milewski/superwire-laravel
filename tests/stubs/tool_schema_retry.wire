@@ -5,6 +5,22 @@ provider openai {
     models: ["test-model"]
 }
 
+tool bound_schema_tool {
+    input {
+        city: string
+    }
+
+    bounded {
+        tenant_id: string
+    }
+}
+
+tool retry_weather_tool {
+    input {
+        city: string
+    }
+}
+
 agent assistant {
     model: openai("test-model")
     tools: [
