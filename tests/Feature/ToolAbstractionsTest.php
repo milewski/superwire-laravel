@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Feature;
 
 use InvalidArgumentException;
+use Prism\Prism\ValueObjects\ToolError;
 use RuntimeException;
 use Superwire\Laravel\Tests\TestCase;
 use Superwire\Laravel\Tools\AbstractTool;
@@ -12,6 +13,7 @@ use Superwire\Laravel\Tools\AgentToolset;
 use Superwire\Laravel\Tools\WorkflowBoundInput;
 use Superwire\Laravel\Tools\WorkflowTool;
 use Superwire\Laravel\Tools\WorkflowToolInput;
+use Superwire\Laravel\Workflow;
 
 final class ToolAbstractionsTest extends TestCase
 {
@@ -64,6 +66,44 @@ final class ToolAbstractionsTest extends TestCase
 
         AgentToolset::fromArray([ ToolAbstractionsInvalidTool::class ], [ 'type' => 'object' ]);
     }
+
+    public function test_abstract_tool_returns_tool_error_for_missing_arguments_before_handle(): void
+    {
+        ToolValidationRetryWeatherTool::reset();
+
+        $toolDefinition = Workflow::fromFile(__DIR__ . '/../stubs/tool_schema_retry.wire')
+            ->definition()
+            ->toolDefinitionNamed(ToolValidationRetryWeatherTool::name());
+
+        $this->assertNotNull($toolDefinition);
+
+        $result = (new ToolValidationRetryWeatherTool())
+            ->toPrismToolFromDefinition($toolDefinition)
+            ->handle(country: 'portugal');
+
+        $this->assertInstanceOf(ToolError::class, $result);
+        $this->assertStringContainsString('city', $result->message);
+        $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
+    }
+
+    public function test_abstract_tool_returns_tool_error_for_invalid_argument_type_before_handle(): void
+    {
+        ToolValidationRetryWeatherTool::reset();
+
+        $toolDefinition = Workflow::fromFile(__DIR__ . '/../stubs/tool_schema_retry.wire')
+            ->definition()
+            ->toolDefinitionNamed(ToolValidationRetryWeatherTool::name());
+
+        $this->assertNotNull($toolDefinition);
+
+        $result = (new ToolValidationRetryWeatherTool())
+            ->toPrismToolFromDefinition($toolDefinition)
+            ->handle(city: 123);
+
+        $this->assertInstanceOf(ToolError::class, $result);
+        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', $result->message);
+        $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
+    }
 }
 
 final class ToolAbstractionsTestTool extends AbstractTool
@@ -94,4 +134,40 @@ final class ToolAbstractionsTestBoundInput extends WorkflowBoundInput
 
 final class ToolAbstractionsInvalidTool
 {
+}
+
+final class ToolValidationRetryWeatherTool extends AbstractTool
+{
+    private static int $handleCallCount = 0;
+
+    public static function name(): string
+    {
+        return 'retry_weather_tool';
+    }
+
+    public static function reset(): void
+    {
+        self::$handleCallCount = 0;
+    }
+
+    public static function handleCallCount(): int
+    {
+        return self::$handleCallCount;
+    }
+
+    protected function handle(ToolValidationRetryWeatherInput $agentInput): array
+    {
+        self::$handleCallCount++;
+
+        return [ 'weather' => sprintf('sunny in %s', $agentInput->city) ];
+    }
+}
+
+final class ToolValidationRetryWeatherInput extends WorkflowToolInput
+{
+    public function __construct(
+        public string $city,
+    )
+    {
+    }
 }

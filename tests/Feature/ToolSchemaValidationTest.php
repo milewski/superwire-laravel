@@ -24,7 +24,7 @@ final class ToolSchemaValidationTest extends TestCase
 
         RetryWeatherTool::reset();
 
-        $provider = $this->fakeRetryingToolProvider();
+        $provider = $this->fakeRetryingToolProvider([ 'country' => 'portugal' ]);
 
         $result = Workflow::fromFile(__DIR__ . '/../stubs/tool_schema_retry.wire')
             ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
@@ -38,16 +38,40 @@ final class ToolSchemaValidationTest extends TestCase
         $this->assertArrayNotHasKey('tenant_id', $registeredTool->parametersAsArray());
 
         $this->assertTrue($provider->sawInvalidToolResultOnRetry());
-        $this->assertStringContainsString('Parameter validation error', (string) $provider->invalidToolResultMessage());
+        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', (string) $provider->invalidToolResultMessage());
         $this->assertStringContainsString('city', (string) $provider->invalidToolResultMessage());
         $this->assertSame('{"weather":"sunny in lisbon"}', $provider->validToolResult());
         $this->assertSame(1, RetryWeatherTool::handleCallCount());
         $this->assertSame([ 'weather' => 'sunny in lisbon' ], $result->output);
     }
 
-    private function fakeRetryingToolProvider(): RetryingToolProvider
+    public function test_tool_returns_failed_tool_result_for_invalid_argument_types_without_calling_handle(): void
     {
-        $provider = new RetryingToolProvider();
+        config()->set('superwire.runtime.stream', false);
+
+        RetryWeatherTool::reset();
+
+        $provider = $this->fakeRetryingToolProvider([ 'city' => 123 ]);
+
+        $result = Workflow::fromFile(__DIR__ . '/../stubs/tool_schema_retry.wire')
+            ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
+            ->run();
+
+        $this->assertTrue($provider->sawInvalidToolResultOnRetry());
+        $this->assertNotNull($provider->invalidToolResultMessage());
+        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', (string) $provider->invalidToolResultMessage());
+        $this->assertStringContainsString('string', strtolower((string) $provider->invalidToolResultMessage()));
+        $this->assertSame('{"weather":"sunny in lisbon"}', $provider->validToolResult());
+        $this->assertSame(1, RetryWeatherTool::handleCallCount());
+        $this->assertSame([ 'weather' => 'sunny in lisbon' ], $result->output);
+    }
+
+    /**
+     * @param array<string, mixed> $invalidToolArguments
+     */
+    private function fakeRetryingToolProvider(array $invalidToolArguments): RetryingToolProvider
+    {
+        $provider = new RetryingToolProvider($invalidToolArguments);
 
         $this->useFakeProvider($provider);
 
@@ -63,7 +87,10 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
 
     private string|array|null $validToolResult = null;
 
-    public function __construct()
+    /**
+     * @param array<string, mixed> $invalidToolArguments
+     */
+    public function __construct(private readonly array $invalidToolArguments)
     {
         parent::__construct([
             fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->invalidToolCallResponse($request, $provider),
@@ -92,7 +119,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
         $toolCall = new ToolCall(
             id: 'invalid-retry-weather-tool-call',
             name: RetryWeatherTool::name(),
-            arguments: [ 'country' => 'portugal' ],
+            arguments: $this->invalidToolArguments,
         );
 
         $toolResult = $provider->executeToolCall($request, $toolCall);

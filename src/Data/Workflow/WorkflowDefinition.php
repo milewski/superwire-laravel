@@ -21,6 +21,7 @@ final class WorkflowDefinition
         public readonly ?WorkflowValueDefinition $input,
         public readonly ?WorkflowValueDefinition $secrets,
         public readonly Schemas $schemas,
+        public readonly array $tools,
         public readonly Providers $providers,
         public readonly Agents $agents,
         public readonly Output $output,
@@ -40,6 +41,7 @@ final class WorkflowDefinition
             input: isset($payload[ 'input' ]) && is_array($payload[ 'input' ]) ? WorkflowValueDefinition::fromArray($payload[ 'input' ]) : null,
             secrets: isset($payload[ 'secrets' ]) && is_array($payload[ 'secrets' ]) ? WorkflowValueDefinition::fromArray($payload[ 'secrets' ]) : null,
             schemas: Schemas::fromArray(self::list($payload, 'schemas')),
+            tools: self::toolDefinitions($payload),
             providers: Providers::fromArray(self::list($payload, 'providers')),
             agents: Agents::fromArray(self::list($payload, 'agents')),
             output: Output::fromArray(self::array($payload, 'output')),
@@ -92,5 +94,53 @@ final class WorkflowDefinition
         }
 
         $this->secrets->validateValues($values, 'secrets');
+    }
+
+    public function toolDefinitionNamed(string $toolName): ?ToolDefinition
+    {
+        foreach ($this->tools as $toolDefinition) {
+
+            if ($toolDefinition->name === $toolName) {
+                return $toolDefinition;
+            }
+
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, ToolDefinition>
+     */
+    public function toolsByName(): array
+    {
+        $toolDefinitions = [];
+
+        foreach ($this->tools as $toolDefinition) {
+            $toolDefinitions[ $toolDefinition->name ] = $toolDefinition;
+        }
+
+        return $toolDefinitions;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<int, ToolDefinition>
+     */
+    private static function toolDefinitions(array $payload): array
+    {
+        $toolDefinitions = [];
+
+        foreach (self::list($payload, 'tools') as $toolPayload) {
+
+            if (!is_array($toolPayload)) {
+                throw new InvalidArgumentException('tools must contain arrays');
+            }
+
+            $toolDefinitions[] = ToolDefinition::fromArray($toolPayload);
+
+        }
+
+        return $toolDefinitions;
     }
 }

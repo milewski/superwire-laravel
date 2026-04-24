@@ -117,6 +117,7 @@ trait ExecutesWorkflowAgents
             tools: $this->resolveToolsForAgent($agent),
             outputSchema: $outputSchema,
             toolBindings: $this->resolveToolBindingsForAgent($agent, $agentOutputs, $scope),
+            toolDefinitions: $this->definition->toolsByName(),
         );
 
         $conversationMessages = [];

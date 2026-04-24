@@ -10,10 +10,12 @@ use Prism\Prism\Tool;
 use RuntimeException;
 use Superwire\Laravel\Contracts\BoundInput;
 use Superwire\Laravel\Contracts\ToolInput;
+use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Support\JsonSchemaFactory;
 use Superwire\Laravel\Tools\Concerns\InfersToolInputSchemas;
 use Superwire\Laravel\Tools\Concerns\ReflectsToolSignature;
 use Superwire\Laravel\Tools\Concerns\ResolvesToolDescriptions;
+use Throwable;
 
 abstract class AbstractTool implements WorkflowTool
 {
@@ -63,6 +65,46 @@ abstract class AbstractTool implements WorkflowTool
 
             return json_encode($result, JSON_THROW_ON_ERROR);
 
+        });
+    }
+
+    public function toPrismToolFromDefinition(ToolDefinition $toolDefinition, array $boundArguments = []): Tool
+    {
+        $tool = new Tool();
+
+        $tool
+            ->as(static::name())
+            ->for($toolDefinition->description ?? static::description())
+            ->failed(static function (Throwable $throwable): string {
+                if ($throwable instanceof RuntimeException) {
+                    return sprintf(
+                        'Tool execution error: %s. This error occurred during tool execution, not due to invalid parameters.',
+                        $throwable->getMessage(),
+                    );
+                }
+
+                return $throwable->getMessage();
+            });
+
+        foreach ($toolDefinition->prismInputParameters() as $parameterSchema) {
+
+            $tool->withParameter(
+                parameter: new RawSchema($parameterSchema[ 'name' ], $parameterSchema[ 'schema' ]),
+                required: $parameterSchema[ 'required' ],
+            );
+
+        }
+
+        return $tool->using(function (...$agentArguments) use ($boundArguments, $toolDefinition): string {
+            $toolDefinition->validateAgentArguments($agentArguments);
+            $toolDefinition->validateBoundArguments($boundArguments);
+
+            $result = $this->execute(
+                agentInput: static::resolveAgentInput($agentArguments),
+                boundInput: static::resolveBoundInput($boundArguments),
+            );
+
+            return json_encode($result, JSON_THROW_ON_ERROR);
         });
     }
 

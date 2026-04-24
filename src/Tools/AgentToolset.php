@@ -8,13 +8,14 @@ use InvalidArgumentException;
 use Prism\Prism\Tool;
 use RuntimeException;
 use Superwire\Laravel\AgentExecutionResult;
+use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Tools\Internal\FinalizeErrorTool;
 use Superwire\Laravel\Tools\Internal\FinalizeSuccessTool;
 
 final readonly class AgentToolset
 {
     /**
-     * @param array<int, array{tool: WorkflowTool, bound_arguments: array<string, mixed>}> $userTools
+     * @param array<int, array{tool: WorkflowTool, tool_definition: ToolDefinition, bound_arguments: array<string, mixed>}> $userTools
      */
     private function __construct(
         private array $userTools,
@@ -28,16 +29,24 @@ final readonly class AgentToolset
      * @param array<int, string|WorkflowTool> $tools
      * @param array<string, mixed> $outputSchema
      * @param array<string, array<string, mixed>> $toolBindings
+     * @param array<string, ToolDefinition> $toolDefinitions
      */
-    public static function fromArray(array $tools, array $outputSchema, array $toolBindings = []): self
+    public static function fromArray(array $tools, array $outputSchema, array $toolBindings = [], array $toolDefinitions = []): self
     {
         $normalizedTools = [];
 
         foreach ($tools as $tool) {
 
             $workflowTool = self::normalizeTool($tool);
+            $toolDefinition = $toolDefinitions[ $workflowTool::name() ] ?? null;
+
+            if (!$toolDefinition instanceof ToolDefinition) {
+                throw new RuntimeException(sprintf('Compiled workflow is missing a tool definition for `%s`.', $workflowTool::name()));
+            }
+
             $normalizedTools[] = [
                 'tool' => $workflowTool,
+                'tool_definition' => $toolDefinition,
                 'bound_arguments' => $toolBindings[ $workflowTool::name() ] ?? [],
             ];
 
@@ -58,6 +67,17 @@ final readonly class AgentToolset
         $tools = [];
 
         foreach ($this->userTools as $boundTool) {
+
+            if ($boundTool[ 'tool' ] instanceof AbstractTool) {
+                $tools[] = $boundTool[ 'tool' ]->toPrismToolFromDefinition(
+                    $boundTool[ 'tool_definition' ],
+                    $boundTool[ 'bound_arguments' ],
+                );
+
+                continue;
+
+            }
+
             $tools[] = $boundTool[ 'tool' ]->toPrismTool($boundTool[ 'bound_arguments' ]);
         }
 
