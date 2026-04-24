@@ -27,7 +27,12 @@ trait ExecutesWorkflowAgents
 
             return $this->executeAgent(
                 agent: $agent,
-                prompt: $this->promptParser->render($agent->prompt, $agentOutputs, [], $this->inputValues, $this->secretValues),
+                prompt: $this->promptParser->render(
+                    prompt: $agent->prompt,
+                    agentOutputs: $agentOutputs,
+                    inputValues: $this->inputValues,
+                    secretValues: $this->secretValues,
+                ),
                 outputSchema: $agent->finalOutputJsonSchema(),
                 agentOutputs: $agentOutputs,
             );
@@ -140,7 +145,7 @@ trait ExecutesWorkflowAgents
             }
 
             $response = $this->executePendingRequest($request);
-            $conversationMessages = $response->messages->all();
+            $conversationMessages = $this->conversationMessagesFromResponse($response);
 
             $finalizedExecutionResult = $toolset->finalizeExecutionResult(
                 agentName: $agent->name,
@@ -195,6 +200,38 @@ trait ExecutesWorkflowAgents
             additionalContent: $streamedResponse->additionalContent,
             raw: $streamedResponse->raw,
         );
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    private function conversationMessagesFromResponse(Response $response): array
+    {
+        $messages = $response->messages->all();
+
+        if ($response->toolResults === [] || $this->messagesContainToolResults($messages)) {
+            return $messages;
+        }
+
+        $messages[] = new ToolResultMessage($response->toolResults);
+
+        return $messages;
+    }
+
+    /**
+     * @param array<int, object> $messages
+     */
+    private function messagesContainToolResults(array $messages): bool
+    {
+        foreach ($messages as $message) {
+
+            if ($message instanceof ToolResultMessage && $message->toolResults !== []) {
+                return true;
+            }
+
+        }
+
+        return false;
     }
 
     private function maxAgentToolSteps(): int
@@ -284,7 +321,7 @@ trait ExecutesWorkflowAgents
                 continue;
             }
 
-            $normalizedContent[] = method_exists($contentPart, 'toArray')
+            $normalizedContent[] = is_object($contentPart) && method_exists($contentPart, 'toArray')
                 ? $contentPart->toArray()
                 : $contentPart;
 

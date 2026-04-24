@@ -31,9 +31,9 @@ trait ResolvesRuntimeProviders
         $request = prism()
             ->text()
             ->using(
-                $this->intoProvider($provider->driver),
-                $this->resolveModel($agent),
-                $this->normalizeProviderConfig($provider->config),
+                provider: $this->intoProvider($provider->driver),
+                model: $this->resolveModel($agent),
+                providerConfig: $this->normalizeProviderConfig($provider->config),
             );
 
         if ($agent->inference->temperature() !== null) {

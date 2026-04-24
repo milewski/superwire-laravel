@@ -4,10 +4,17 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Feature;
 
+use Illuminate\Support\Collection;
+use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Testing\TextResponseFake;
 use Prism\Prism\Text\Request as TextRequest;
+use Prism\Prism\Text\Step;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
+use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ToolCall;
+use Prism\Prism\ValueObjects\ToolResult;
+use Prism\Prism\ValueObjects\Usage;
 use Superwire\Laravel\Support\JsonSchemaFactory;
 use Superwire\Laravel\Tests\Fakes\ScriptedToolLoopProvider;
 use Superwire\Laravel\Tests\TestCase;
@@ -82,6 +89,22 @@ final class ToolSchemaValidationTest extends TestCase
         $this->assertSame([ 'weather' => 'sunny in lisbon' ], $result->output);
     }
 
+    public function test_non_streaming_tool_results_are_carried_into_next_manual_tool_step(): void
+    {
+        config()->set('superwire.runtime.stream', false);
+
+        $provider = new DroppedToolResultMessageProvider();
+
+        $this->useFakeProvider($provider);
+
+        $result = Workflow::fromFile(__DIR__ . '/../stubs/tool_schema_retry.wire')
+            ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
+            ->run();
+
+        $this->assertTrue($provider->secondRequestHadToolResultMessage());
+        $this->assertSame([ 'weather' => 'sunny in lisbon' ], $result->output);
+    }
+
     /**
      * @param array<string, mixed> $invalidToolArguments
      */
@@ -92,6 +115,95 @@ final class ToolSchemaValidationTest extends TestCase
         $this->useFakeProvider($provider);
 
         return $provider;
+    }
+}
+
+final class DroppedToolResultMessageProvider extends ScriptedToolLoopProvider
+{
+    private bool $secondRequestHadToolResultMessage = false;
+
+    public function __construct()
+    {
+        parent::__construct([
+            fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->toolCallResponseWithoutToolResultMessage($request, $provider),
+            fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->finalizeAfterToolResultWasCarried($request, $provider),
+        ]);
+    }
+
+    public function secondRequestHadToolResultMessage(): bool
+    {
+        return $this->secondRequestHadToolResultMessage;
+    }
+
+    private function toolCallResponseWithoutToolResultMessage(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    {
+        $toolCall = new ToolCall(
+            id: 'weather-tool-call',
+            name: RetryWeatherTool::name(),
+            arguments: [ 'city' => 'lisbon' ],
+        );
+
+        $toolResult = $provider->executeToolCall($request, $toolCall);
+        $assistantMessage = new AssistantMessage(content: '', toolCalls: [ $toolCall ]);
+
+        return $this->toolResponseWithoutToolResultMessage($request, $toolCall, $toolResult, $assistantMessage);
+    }
+
+    private function finalizeAfterToolResultWasCarried(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    {
+        $this->secondRequestHadToolResultMessage = $this->requestContainsToolResultMessage($request);
+
+        $toolCall = new ToolCall(
+            id: 'finalize-success-tool-call',
+            name: FinalizeSuccessTool::name(),
+            arguments: [
+                'result' => [
+                    'weather' => 'sunny in lisbon',
+                ],
+            ],
+        );
+
+        return $provider->toolResponse($request, $toolCall, $provider->executeToolCall($request, $toolCall));
+    }
+
+    private function requestContainsToolResultMessage(TextRequest $request): bool
+    {
+        foreach ($request->messages() as $message) {
+
+            if ($message instanceof ToolResultMessage && $message->toolResults !== []) {
+                return true;
+            }
+
+        }
+
+        return false;
+    }
+
+    private function toolResponseWithoutToolResultMessage(TextRequest $request, ToolCall $toolCall, ToolResult $toolResult, AssistantMessage $assistantMessage): TextResponseFake
+    {
+        return TextResponseFake::make()
+            ->withFinishReason(FinishReason::ToolCalls)
+            ->withToolCalls([ $toolCall ])
+            ->withToolResults([ $toolResult ])
+            ->withUsage(new Usage(0, 0))
+            ->withMeta(new Meta('fake', 'fake'))
+            ->withSteps(new Collection([
+                new Step(
+                    text: '',
+                    finishReason: FinishReason::ToolCalls,
+                    toolCalls: [ $toolCall ],
+                    toolResults: [ $toolResult ],
+                    providerToolCalls: [],
+                    usage: new Usage(0, 0),
+                    meta: new Meta('fake', 'fake'),
+                    messages: $request->messages(),
+                    systemPrompts: $request->systemPrompts(),
+                ),
+            ]))
+            ->withMessages(new Collection([
+                ...$request->messages(),
+                $assistantMessage,
+            ]));
     }
 }
 

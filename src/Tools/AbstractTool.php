@@ -76,14 +76,18 @@ abstract class AbstractTool implements WorkflowTool
             ->as(static::name())
             ->for($toolDefinition->description ?? static::description())
             ->failed(static function (Throwable $throwable): string {
+
                 if ($throwable instanceof RuntimeException) {
+
                     return sprintf(
                         'Tool execution error: %s. This error occurred during tool execution, not due to invalid parameters.',
                         $throwable->getMessage(),
                     );
+
                 }
 
                 return $throwable->getMessage();
+
             });
 
         foreach ($toolDefinition->prismInputParameters() as $parameterSchema) {
@@ -96,6 +100,7 @@ abstract class AbstractTool implements WorkflowTool
         }
 
         return $tool->using(function (...$agentArguments) use ($boundArguments, $toolDefinition): string {
+
             $toolDefinition->validateAgentArguments($agentArguments);
             $toolDefinition->validateBoundArguments($boundArguments);
 
@@ -105,6 +110,7 @@ abstract class AbstractTool implements WorkflowTool
             );
 
             return json_encode($result, JSON_THROW_ON_ERROR);
+
         });
     }
 
@@ -133,15 +139,15 @@ abstract class AbstractTool implements WorkflowTool
 
             }
 
-            throw new RuntimeException(sprintf(
-                'Tool `%s` has unsupported execution parameter `%s`. Use %s or %s implementations only.',
-                static::name(),
-                $parameter->getName(),
-                ToolInput::class,
-                BoundInput::class,
-            ));
+            throw new RuntimeException(
+                message: sprintf(
+                    'Tool `%s` has unsupported execution parameter `%s`. Use %s or %s implementations only.', static::name(), $parameter->getName(), ToolInput::class, BoundInput::class,
+                ),
+            );
 
         }
+
+        logger($executionMethod->class, $arguments);
 
         $result = $this->{$executionMethod->getName()}(...$arguments);
 

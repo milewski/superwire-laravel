@@ -69,6 +69,7 @@ final readonly class AgentToolset
         foreach ($this->userTools as $boundTool) {
 
             if ($boundTool[ 'tool' ] instanceof AbstractTool) {
+
                 $tools[] = $boundTool[ 'tool' ]->toPrismToolFromDefinition(
                     $boundTool[ 'tool_definition' ],
                     $boundTool[ 'bound_arguments' ],
@@ -79,6 +80,7 @@ final readonly class AgentToolset
             }
 
             $tools[] = $boundTool[ 'tool' ]->toPrismTool($boundTool[ 'bound_arguments' ]);
+
         }
 
         $tools[] = $this->finalizeSuccessTool->toPrismTool();
