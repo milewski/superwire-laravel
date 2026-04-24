@@ -75,7 +75,7 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function workspaceRoot(): string
     {
-        $workspaceRoot = realpath(__DIR__ . '/../../../..');
+        $workspaceRoot = realpath(__DIR__ . '/../../..');
 
         return is_string($workspaceRoot) && $workspaceRoot !== ''
             ? $workspaceRoot
