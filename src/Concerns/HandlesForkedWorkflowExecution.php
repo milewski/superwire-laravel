@@ -139,7 +139,7 @@ trait HandlesForkedWorkflowExecution
 
         $providerInstance = $this->providerInstance($agent);
 
-        return !str_starts_with($providerInstance::class, 'Prism\\Prism\\Testing\\');
+        return !str_contains($providerInstance::class, 'Fake');
     }
 
     private function forkRunner(): Fork

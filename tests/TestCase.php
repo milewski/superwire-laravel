@@ -5,11 +5,10 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests;
 
 use Illuminate\Foundation\Application;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\AiServiceProvider;
+use Laravel\Ai\Contracts\Providers\TextProvider;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\PrismManager;
-use Prism\Prism\PrismServiceProvider;
-use Prism\Prism\Providers\Provider as PrismProvider;
 use Spatie\LaravelData\LaravelDataServiceProvider;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\SuperwireLaravelServiceProvider;
@@ -25,7 +24,7 @@ abstract class TestCase extends OrchestraTestCase
     protected function getPackageProviders($app): array
     {
         return [
-            PrismServiceProvider::class,
+            AiServiceProvider::class,
             LaravelDataServiceProvider::class,
             SuperwireLaravelServiceProvider::class,
         ];
@@ -147,20 +146,16 @@ abstract class TestCase extends OrchestraTestCase
         return $provider;
     }
 
-    protected function useFakeProvider(PrismProvider $provider): PrismProvider
+    protected function useFakeProvider(TextProvider $provider): TextProvider
     {
-        app()->instance(PrismManager::class, new class (app(), $provider) extends PrismManager {
-            public function __construct($app, private readonly PrismProvider $provider)
+        app()->instance(AiManager::class, new class (app(), $provider) extends AiManager {
+            public function __construct($app, private readonly TextProvider $provider)
             {
                 parent::__construct($app);
             }
 
-            public function resolve(Provider|string $name, array $providerConfig = []): PrismProvider
+            public function textProvider(?string $name = null): TextProvider
             {
-                if (method_exists($this->provider, 'recordProviderConfig')) {
-                    $this->provider->recordProviderConfig($providerConfig);
-                }
-
                 return $this->provider;
             }
         });

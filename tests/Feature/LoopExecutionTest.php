@@ -5,10 +5,10 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Feature;
 
 use Generator;
-use Prism\Prism\Testing\TextResponseFake;
-use Prism\Prism\Text\Request as TextRequest;
-use Prism\Prism\ValueObjects\ToolCall;
+use Laravel\Ai\Responses\Data\ToolCall;
+use Laravel\Ai\Responses\TextResponse;
 use RuntimeException;
+use Superwire\Laravel\Testing\Fakes\TextRequest;
 use Superwire\Laravel\Tests\Fakes\AbstractToolLoopProvider;
 use Superwire\Laravel\Tests\TestCase;
 use Superwire\Laravel\Tools\Internal\FinalizeSuccessTool;
@@ -63,7 +63,7 @@ final class LoopExecutionTest extends TestCase
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Execution failed for iteration agent counter: RuntimeException: OpenAI: unhandled finish reason "unknown" (status: n/a, type: n/a)');
+        $this->expectExceptionMessage('OpenAI: unhandled finish reason "unknown" (status: n/a, type: n/a)');
 
         Workflow::fromFile(__DIR__ . '/../stubs/inputs_secrets_loop.wire')
             ->withInputs([ 'min' => 1, 'max' => 3 ])
@@ -93,10 +93,8 @@ final class LoopExecutionTest extends TestCase
 
 final class DatabaseQueryToolLoopProvider extends AbstractToolLoopProvider
 {
-    public function text(TextRequest $request): TextResponseFake
+    public function text(TextRequest $request): TextResponse
     {
-        $this->recordTextRequest($request);
-
         return match ($request->prompt()) {
             'Write customer story.' => $this->finalizeSuccessResponse($request, $this->databaseResult('customer')),
             'Write investor story.' => $this->finalizeSuccessResponse($request, $this->databaseResult('investor')),
@@ -108,22 +106,11 @@ final class DatabaseQueryToolLoopProvider extends AbstractToolLoopProvider
     /**
      * @return Generator<mixed>
      */
-    public function stream(TextRequest $request): Generator
+    public function streamFake(TextRequest $request): Generator
     {
         unset($request);
 
         throw new RuntimeException('Streaming is not supported by DatabaseQueryToolLoopProvider.');
-    }
-
-    private function finalizeSuccessResponse(TextRequest $request, mixed $result): TextResponseFake
-    {
-        $toolCall = new ToolCall(
-            id: 'fake-finalize-success',
-            name: FinalizeSuccessTool::name(),
-            arguments: [ 'result' => $result ],
-        );
-
-        return $this->toolResponse($request, $toolCall, $this->executeToolCall($request, $toolCall));
     }
 
     private function databaseResult(string $story): string

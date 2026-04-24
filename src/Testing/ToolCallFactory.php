@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Testing;
 
-use Prism\Prism\ValueObjects\ToolCall;
+use Laravel\Ai\Responses\Data\ToolCall;
 use Superwire\Laravel\Tools\WorkflowTool;
 
 final class ToolCallFactory

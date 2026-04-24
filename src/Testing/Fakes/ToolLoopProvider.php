@@ -4,105 +4,34 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Testing\Fakes;
 
-use Generator;
-use Prism\Prism\Streaming\EventID;
-use Prism\Prism\Streaming\Events\StepFinishEvent;
-use Prism\Prism\Streaming\Events\StepStartEvent;
-use Prism\Prism\Streaming\Events\StreamEndEvent;
-use Prism\Prism\Streaming\Events\StreamEvent;
-use Prism\Prism\Streaming\Events\StreamStartEvent;
-use Prism\Prism\Streaming\Events\ToolCallEvent;
-use Prism\Prism\Streaming\Events\ToolResultEvent;
-use Prism\Prism\Testing\TextResponseFake;
-use Prism\Prism\Text\Request as TextRequest;
+use Laravel\Ai\Responses\TextResponse;
 use RuntimeException;
 use Throwable;
 
-final class ToolLoopProvider extends AbstractToolLoopProvider
+class ToolLoopProvider extends AbstractToolLoopProvider
 {
     /**
      * @param array<string, mixed> $resultsByPrompt
      */
-    public function __construct(
-        private readonly array $resultsByPrompt,
-    )
+    public function __construct(private readonly array $resultsByPrompt)
     {
+        parent::__construct();
     }
 
-    public function text(TextRequest $request): TextResponseFake
+    public function text(TextRequest $request): TextResponse
     {
-        $this->recordTextRequest($request);
-
         return $this->responseForRequest($request);
     }
 
-    /**
-     * @return Generator<StreamEvent>
-     */
-    public function stream(TextRequest $request): Generator
-    {
-        $this->recordStreamRequest($request);
-
-        $response = $this->responseForRequest($request);
-        $messageId = EventID::generate();
-
-        yield new StreamStartEvent(
-            id: EventID::generate(),
-            timestamp: time(),
-            model: $request->model(),
-            provider: 'fake',
-        );
-
-        yield new StepStartEvent(
-            id: EventID::generate(),
-            timestamp: time(),
-        );
-
-        foreach ($response->toolCalls as $toolCall) {
-
-            yield new ToolCallEvent(
-                id: EventID::generate(),
-                timestamp: time(),
-                toolCall: $toolCall,
-                messageId: $messageId,
-            );
-
-        }
-
-        foreach ($response->toolResults as $toolResult) {
-
-            yield new ToolResultEvent(
-                id: EventID::generate(),
-                timestamp: time(),
-                toolResult: $toolResult,
-                messageId: $messageId,
-                success: true,
-            );
-
-        }
-
-        yield new StepFinishEvent(
-            id: EventID::generate(),
-            timestamp: time(),
-        );
-
-        yield new StreamEndEvent(
-            id: EventID::generate(),
-            timestamp: time(),
-            finishReason: $response->finishReason,
-            usage: $response->usage,
-        );
-    }
-
-    private function responseForRequest(TextRequest $request): TextResponseFake
+    private function responseForRequest(TextRequest $request): TextResponse
     {
         $result = $this->resultForPrompt($request->prompt());
 
-        if ($result instanceof FinalizeErrorResponse) {
+        if ($result instanceof FinalizeErrorResponse || (is_object($result) && class_basename($result) === 'FinalizeErrorResponse')) {
             return $this->finalizeErrorResponse($request, $result->message);
         }
 
-        if ($result instanceof NoFinalizationResponse) {
+        if ($result instanceof NoFinalizationResponse || (is_object($result) && class_basename($result) === 'NoFinalizationResponse')) {
             return $this->textResponse($request, $result->text);
         }
 

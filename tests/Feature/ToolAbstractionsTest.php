@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Feature;
 
 use InvalidArgumentException;
-use Prism\Prism\ValueObjects\ToolError;
+use Laravel\Ai\Tools\Request;
 use RuntimeException;
 use Superwire\Laravel\Tests\TestCase;
 use Superwire\Laravel\Tools\AbstractTool;
@@ -78,11 +78,10 @@ final class ToolAbstractionsTest extends TestCase
         $this->assertNotNull($toolDefinition);
 
         $result = (new ToolValidationRetryWeatherTool())
-            ->toPrismToolFromDefinition($toolDefinition)
-            ->handle(country: 'portugal');
+            ->toAiToolFromDefinition($toolDefinition)
+            ->handle(new Request([ 'country' => 'portugal' ]));
 
-        $this->assertInstanceOf(ToolError::class, $result);
-        $this->assertStringContainsString('city', $result->message);
+        $this->assertStringContainsString('city', (string) $result);
         $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
     }
 
@@ -97,11 +96,10 @@ final class ToolAbstractionsTest extends TestCase
         $this->assertNotNull($toolDefinition);
 
         $result = (new ToolValidationRetryWeatherTool())
-            ->toPrismToolFromDefinition($toolDefinition)
-            ->handle(city: 123);
+            ->toAiToolFromDefinition($toolDefinition)
+            ->handle(new Request([ 'city' => 123 ]));
 
-        $this->assertInstanceOf(ToolError::class, $result);
-        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', $result->message);
+        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', (string) $result);
         $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
     }
 }

@@ -6,49 +6,19 @@ namespace Superwire\Laravel\Concerns;
 
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Container\CircularDependencyException;
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\PrismManager;
-use Prism\Prism\Providers\Provider as PrismProvider;
-use Prism\Prism\Text\PendingRequest;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\Contracts\Providers\TextProvider;
 use RuntimeException;
 use Superwire\Laravel\Data\Agent\Agent;
 
 trait ResolvesRuntimeProviders
 {
-    private function intoProvider(string $provider): Provider
+    private function intoProvider(string $provider): string
     {
         return match ($provider) {
-            'openai' => Provider::OpenAI,
-            'ollama' => Provider::Ollama,
+            'openai', 'ollama', 'anthropic', 'gemini', 'groq', 'xai', 'deepseek', 'mistral' => $provider,
             default => throw new RuntimeException(sprintf('Unknown provider: {%s}', $provider)),
         };
-    }
-
-    private function agentRequest(Agent $agent): PendingRequest
-    {
-        $provider = $this->definition->providers->findByName($agent->provider);
-
-        $request = prism()
-            ->text()
-            ->using(
-                provider: $this->intoProvider($provider->driver),
-                model: $this->resolveModel($agent),
-                providerConfig: $this->normalizeProviderConfig($provider->config),
-            );
-
-        if ($agent->inference->temperature() !== null) {
-            $request->usingTemperature($agent->inference->temperature());
-        }
-
-        if ($agent->inference->maxTokens() !== null) {
-            $request->withMaxTokens($agent->inference->maxTokens());
-        }
-
-        if ($agent->inference->topP() !== null) {
-            $request->usingTopP($agent->inference->topP());
-        }
-
-        return $request;
     }
 
     private function normalizeProviderConfig(array $providerConfig): array
@@ -121,13 +91,22 @@ trait ResolvesRuntimeProviders
      * @throws CircularDependencyException
      * @throws BindingResolutionException
      */
-    private function providerInstance(Agent $agent): PrismProvider
+    private function providerInstance(Agent $agent): TextProvider
     {
         $provider = $this->definition->providers->findByName($agent->provider);
+        $providerName = sprintf('superwire_%s', $provider->name);
 
-        return app(PrismManager::class)->resolve(
-            $this->intoProvider($provider->driver),
-            $this->normalizeProviderConfig($provider->config),
-        );
+        config()->set(sprintf('ai.providers.%s', $providerName), [
+            ...$this->normalizeProviderConfig($provider->config),
+            'driver' => $this->intoProvider($provider->driver),
+        ]);
+
+        $textProvider = app(AiManager::class)->textProvider($providerName);
+
+        if (method_exists($textProvider, 'recordProviderConfig')) {
+            $textProvider->recordProviderConfig($this->normalizeProviderConfig($provider->config));
+        }
+
+        return $textProvider;
     }
 }

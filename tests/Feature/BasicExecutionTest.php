@@ -28,8 +28,8 @@ final class BasicExecutionTest extends TestCase
         $this->assertSame('assistant', $result->agents[ 'greeting' ]->messages[ 1 ][ 'type' ]);
         $this->assertSame('tool_result', $result->agents[ 'greeting' ]->messages[ 2 ][ 'type' ]);
         $this->assertSame(FinalizeSuccessTool::name(), $result->agents[ 'greeting' ]->messages[ 2 ][ 'tool_results' ][ 0 ][ 'tool_name' ]);
-        $this->assertCount(0, $provider->textRequests());
-        $this->assertCount(1, $provider->streamRequests());
+        $this->assertCount(1, $provider->textRequests());
+        $this->assertCount(0, $provider->streamRequests());
     }
 
     public function test_can_run_workflow_with_dynamic_inputs_and_secret_provider_config(): void

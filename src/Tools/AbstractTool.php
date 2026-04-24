@@ -5,13 +5,14 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tools;
 
 use Illuminate\Support\Str;
-use Prism\Prism\Schema\RawSchema;
-use Prism\Prism\Tool;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
 use RuntimeException;
 use Superwire\Laravel\Contracts\BoundInput;
 use Superwire\Laravel\Contracts\ToolInput;
 use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Support\JsonSchemaFactory;
+use Superwire\Laravel\Support\LaravelAiSchema;
 use Superwire\Laravel\Tools\Concerns\InfersToolInputSchemas;
 use Superwire\Laravel\Tools\Concerns\ReflectsToolSignature;
 use Superwire\Laravel\Tools\Concerns\ResolvesToolDescriptions;
@@ -39,24 +40,12 @@ abstract class AbstractTool implements WorkflowTool
         return sprintf('Use `%s` to complete this action.', Str::headline(class_basename(static::class)));
     }
 
-    public function toPrismTool(array $boundArguments = []): Tool
+    public function toAiTool(array $boundArguments = []): Tool
     {
-        $tool = new Tool();
-
-        $tool
-            ->as(static::name())
-            ->for(static::description());
-
-        foreach ($this->agentInputSchemas() as $parameterSchema) {
-
-            $tool->withParameter(
-                parameter: new RawSchema($parameterSchema[ 'name' ], JsonSchemaFactory::toArray($parameterSchema[ 'schema' ])),
-                required: $parameterSchema[ 'required' ],
-            );
-
-        }
-
-        return $tool->using(function (...$agentArguments) use ($boundArguments): string {
+        return LaravelAiToolFactory::make(
+            name: static::name(),
+            description: static::description(),
+            handler: function (array $agentArguments) use ($boundArguments): string {
 
             $result = $this->execute(
                 agentInput: static::resolveAgentInput($agentArguments),
@@ -65,17 +54,31 @@ abstract class AbstractTool implements WorkflowTool
 
             return json_encode($result, JSON_THROW_ON_ERROR);
 
-        });
+            },
+            schema: fn (JsonSchema $schema): array => $this->agentInputSchemaTypes($schema),
+        );
     }
 
-    public function toPrismToolFromDefinition(ToolDefinition $toolDefinition, array $boundArguments = []): Tool
+    public function toAiToolFromDefinition(ToolDefinition $toolDefinition, array $boundArguments = []): Tool
     {
-        $tool = new Tool();
+        return LaravelAiToolFactory::make(
+            name: static::name(),
+            description: $toolDefinition->description ?? static::description(),
+            handler: function (array $agentArguments) use ($boundArguments, $toolDefinition): string {
 
-        $tool
-            ->as(static::name())
-            ->for($toolDefinition->description ?? static::description())
-            ->failed(static function (Throwable $throwable): string {
+                try {
+
+                    $toolDefinition->validateAgentArguments($agentArguments);
+                    $toolDefinition->validateBoundArguments($boundArguments);
+
+                    $result = $this->execute(
+                        agentInput: static::resolveAgentInput($agentArguments),
+                        boundInput: static::resolveBoundInput($boundArguments),
+                    );
+
+                    return json_encode($result, JSON_THROW_ON_ERROR);
+
+                } catch (Throwable $throwable) {
 
                 if ($throwable instanceof RuntimeException) {
 
@@ -88,30 +91,46 @@ abstract class AbstractTool implements WorkflowTool
 
                 return $throwable->getMessage();
 
-            });
+                }
+            },
+            schema: fn (JsonSchema $schema): array => $this->toolDefinitionSchemaTypes($schema, $toolDefinition),
+        );
+    }
 
-        foreach ($toolDefinition->prismInputParameters() as $parameterSchema) {
+    /**
+     * @return array<string, \Illuminate\JsonSchema\Types\Type>
+     */
+    private function agentInputSchemaTypes(JsonSchema $schema): array
+    {
+        $parameters = [];
 
-            $tool->withParameter(
-                parameter: new RawSchema($parameterSchema[ 'name' ], $parameterSchema[ 'schema' ]),
-                required: $parameterSchema[ 'required' ],
+        foreach ($this->agentInputSchemas() as $parameterSchema) {
+            $parameters[ $parameterSchema[ 'name' ] ] = LaravelAiSchema::type(
+                $schema,
+                JsonSchemaFactory::toArray($parameterSchema[ 'schema' ]),
+                $parameterSchema[ 'required' ],
             );
-
         }
 
-        return $tool->using(function (...$agentArguments) use ($boundArguments, $toolDefinition): string {
+        return $parameters;
+    }
 
-            $toolDefinition->validateAgentArguments($agentArguments);
-            $toolDefinition->validateBoundArguments($boundArguments);
+    /**
+     * @return array<string, \Illuminate\JsonSchema\Types\Type>
+     */
+    private function toolDefinitionSchemaTypes(JsonSchema $schema, ToolDefinition $toolDefinition): array
+    {
+        $parameters = [];
 
-            $result = $this->execute(
-                agentInput: static::resolveAgentInput($agentArguments),
-                boundInput: static::resolveBoundInput($boundArguments),
+        foreach ($toolDefinition->inputParameters() as $parameterSchema) {
+            $parameters[ $parameterSchema[ 'name' ] ] = LaravelAiSchema::type(
+                $schema,
+                $parameterSchema[ 'schema' ],
+                $parameterSchema[ 'required' ],
             );
+        }
 
-            return json_encode($result, JSON_THROW_ON_ERROR);
-
-        });
+        return $parameters;
     }
 
     public function execute(mixed $agentInput = null, mixed $boundInput = null): array

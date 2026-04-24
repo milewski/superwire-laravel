@@ -71,7 +71,7 @@ final class ToolDefinition
     /**
      * @return array<int, array{name: string, schema: array<string, mixed>, required: bool}>
      */
-    public function prismInputParameters(): array
+    public function inputParameters(): array
     {
         $properties = $this->inputSchemaDefinition['properties'] ?? [];
         $requiredProperties = $this->requiredProperties($this->inputSchemaDefinition);

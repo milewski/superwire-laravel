@@ -4,13 +4,11 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Concerns;
 
-use Prism\Prism\ValueObjects\Media\Text;
-use Prism\Prism\ValueObjects\Messages\AssistantMessage;
-use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
-use Prism\Prism\ValueObjects\Messages\UserMessage;
-use Prism\Prism\Streaming\StreamCollector;
-use Prism\Prism\Text\PendingRequest;
-use Prism\Prism\Text\Response;
+use Laravel\Ai\Gateway\TextGenerationOptions;
+use Laravel\Ai\Messages\AssistantMessage;
+use Laravel\Ai\Messages\ToolResultMessage;
+use Laravel\Ai\Messages\UserMessage;
+use Laravel\Ai\Responses\TextResponse;
 use RuntimeException;
 use Superwire\Laravel\AgentExecutionResult;
 use Superwire\Laravel\Data\Agent\Agent;
@@ -125,37 +123,22 @@ trait ExecutesWorkflowAgents
             toolDefinitions: $this->definition->toolsByName(),
         );
 
-        $conversationMessages = [];
+        $toolset->resetFinalization();
 
-        for ($toolStepNumber = 1; $toolStepNumber <= $this->maxAgentToolSteps(); $toolStepNumber++) {
+        $response = $this->executeTextGeneration(
+            agent: $agent,
+            prompt: $prompt,
+            instructions: $this->finalizationPrompt($outputSchema),
+            tools: $toolset->aiTools(),
+        );
 
-            $toolset->resetFinalization();
+        $finalizedExecutionResult = $toolset->finalizeExecutionResult(
+            agentName: $agent->name,
+            messages: $this->messagesToArray($response->messages->all()),
+        );
 
-            $request = $this->agentRequest($agent)
-                ->withSystemPrompt($this->finalizationPrompt($outputSchema))
-                ->withTools($toolset->prismTools())
-                ->withMaxSteps(1);
-
-            if ($conversationMessages === []) {
-                $request->withPrompt($prompt);
-            }
-
-            if ($conversationMessages !== []) {
-                $request->withMessages($conversationMessages);
-            }
-
-            $response = $this->executePendingRequest($request);
-            $conversationMessages = $this->conversationMessagesFromResponse($response);
-
-            $finalizedExecutionResult = $toolset->finalizeExecutionResult(
-                agentName: $agent->name,
-                messages: $this->messagesToArray($conversationMessages),
-            );
-
-            if ($finalizedExecutionResult !== null) {
-                return $finalizedExecutionResult;
-            }
-
+        if ($finalizedExecutionResult !== null) {
+            return $finalizedExecutionResult;
         }
 
         throw new RuntimeException(
@@ -163,75 +146,28 @@ trait ExecutesWorkflowAgents
         );
     }
 
-    private function executePendingRequest(PendingRequest $request): Response
-    {
-        if (!$this->shouldStreamResponses()) {
-            return $request->asText();
-        }
-
-        $textRequest = $request->toRequest();
-        $streamedResponse = null;
-
-        $streamCollector = new StreamCollector(
-            stream: $request->asStream(),
-            pendingRequest: $request,
-            onCompleteCallback: static function ($completedRequest, $messages, Response $response) use (&$streamedResponse): void {
-                $streamedResponse = $response;
-            },
-        );
-
-        foreach ($streamCollector->collect() as $streamEvent) {
-            unset($streamEvent);
-        }
-
-        if (!$streamedResponse instanceof Response) {
-            throw new RuntimeException('Streaming request completed without producing a text response.');
-        }
-
-        return new Response(
-            steps: $streamedResponse->steps,
-            text: $streamedResponse->text,
-            finishReason: $streamedResponse->finishReason,
-            toolCalls: $streamedResponse->toolCalls,
-            toolResults: $streamedResponse->toolResults,
-            usage: $streamedResponse->usage,
-            meta: $streamedResponse->meta,
-            messages: collect([ ...$textRequest->messages(), ...$streamedResponse->messages->all() ]),
-            additionalContent: $streamedResponse->additionalContent,
-            raw: $streamedResponse->raw,
-        );
-    }
-
     /**
-     * @return array<int, object>
+     * @param array<int, \Laravel\Ai\Contracts\Tool> $tools
      */
-    private function conversationMessagesFromResponse(Response $response): array
+    private function executeTextGeneration(Agent $agent, string $prompt, string $instructions, array $tools): TextResponse
     {
-        $messages = $response->messages->all();
+        $provider = $this->providerInstance($agent);
+        $messages = [ new UserMessage($prompt) ];
 
-        if ($response->toolResults === [] || $this->messagesContainToolResults($messages)) {
-            return $messages;
-        }
-
-        $messages[] = new ToolResultMessage($response->toolResults);
-
-        return $messages;
-    }
-
-    /**
-     * @param array<int, object> $messages
-     */
-    private function messagesContainToolResults(array $messages): bool
-    {
-        foreach ($messages as $message) {
-
-            if ($message instanceof ToolResultMessage && $message->toolResults !== []) {
-                return true;
-            }
-
-        }
-
-        return false;
+        return $provider->textGateway()->generateText(
+            provider: $provider,
+            model: $this->resolveModel($agent),
+            instructions: $instructions,
+            messages: $messages,
+            tools: $tools,
+            schema: null,
+            options: new TextGenerationOptions(
+                maxSteps: $this->maxAgentToolSteps(),
+                maxTokens: $agent->inference->maxTokens(),
+                temperature: $agent->inference->temperature(),
+            ),
+            timeout: null,
+        );
     }
 
     private function maxAgentToolSteps(): int
@@ -259,7 +195,15 @@ trait ExecutesWorkflowAgents
         return match (true) {
             $message instanceof UserMessage => $this->serializeUserMessage($message),
             $message instanceof AssistantMessage => $this->serializeAssistantMessage($message),
-            $message instanceof ToolResultMessage => $message->toArray(),
+            $message instanceof ToolResultMessage => [
+                'type' => 'tool_result',
+                'tool_results' => $message->toolResults->map(function ($toolResult): array {
+                    $result = $toolResult->toArray();
+                    $result[ 'tool_name' ] = $result[ 'name' ] ?? null;
+
+                    return $result;
+                })->all(),
+            ],
             default => method_exists($message, 'toArray') ? $message->toArray() : [ 'type' => 'unknown' ],
         };
     }
@@ -274,14 +218,8 @@ trait ExecutesWorkflowAgents
             'content' => $message->content,
         ];
 
-        $additionalContent = $this->normalizeAdditionalContent($message->additionalContent, $message->content);
-
-        if ($additionalContent !== []) {
-            $serializedMessage[ 'additional_content' ] = $additionalContent;
-        }
-
-        if ($message->additionalAttributes !== []) {
-            $serializedMessage[ 'additional_attributes' ] = $message->additionalAttributes;
+        if ($message->attachments->isNotEmpty()) {
+            $serializedMessage[ 'attachments' ] = $message->attachments->all();
         }
 
         return $serializedMessage;
@@ -295,39 +233,10 @@ trait ExecutesWorkflowAgents
         $serializedMessage = [
             'type' => 'assistant',
             'content' => $message->content,
-            'tool_calls' => array_map(static fn ($toolCall): array => $toolCall->toArray(), $message->toolCalls),
+            'tool_calls' => $message->toolCalls->map(fn ($toolCall): array => $toolCall->toArray())->all(),
         ];
 
-        $additionalContent = $this->normalizeAdditionalContent($message->additionalContent, $message->content);
-
-        if ($additionalContent !== []) {
-            $serializedMessage[ 'additional_content' ] = $additionalContent;
-        }
-
         return $serializedMessage;
-    }
-
-    /**
-     * @param array<int, mixed> $additionalContent
-     * @return array<int, mixed>
-     */
-    private function normalizeAdditionalContent(array $additionalContent, string $content): array
-    {
-        $normalizedContent = [];
-
-        foreach ($additionalContent as $contentPart) {
-
-            if ($contentPart instanceof Text && $contentPart->text === $content) {
-                continue;
-            }
-
-            $normalizedContent[] = is_object($contentPart) && method_exists($contentPart, 'toArray')
-                ? $contentPart->toArray()
-                : $contentPart;
-
-        }
-
-        return $normalizedContent;
     }
 
     private function finalizationPrompt(array $outputSchema): string

@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tools;
 
 use InvalidArgumentException;
-use Prism\Prism\Tool;
+use Laravel\Ai\Contracts\Tool;
 use RuntimeException;
 use Superwire\Laravel\AgentExecutionResult;
 use Superwire\Laravel\Data\Workflow\ToolDefinition;
@@ -62,7 +62,7 @@ final readonly class AgentToolset
     /**
      * @return array<int, Tool>
      */
-    public function prismTools(): array
+    public function aiTools(): array
     {
         $tools = [];
 
@@ -70,7 +70,7 @@ final readonly class AgentToolset
 
             if ($boundTool[ 'tool' ] instanceof AbstractTool) {
 
-                $tools[] = $boundTool[ 'tool' ]->toPrismToolFromDefinition(
+                $tools[] = $boundTool[ 'tool' ]->toAiToolFromDefinition(
                     $boundTool[ 'tool_definition' ],
                     $boundTool[ 'bound_arguments' ],
                 );
@@ -79,12 +79,12 @@ final readonly class AgentToolset
 
             }
 
-            $tools[] = $boundTool[ 'tool' ]->toPrismTool($boundTool[ 'bound_arguments' ]);
+            $tools[] = $boundTool[ 'tool' ]->toAiTool($boundTool[ 'bound_arguments' ]);
 
         }
 
-        $tools[] = $this->finalizeSuccessTool->toPrismTool();
-        $tools[] = $this->finalizeErrorTool->toPrismTool();
+        $tools[] = $this->finalizeSuccessTool->toAiTool();
+        $tools[] = $this->finalizeErrorTool->toAiTool();
 
         return $tools;
     }
@@ -100,6 +100,25 @@ final readonly class AgentToolset
      */
     public function finalizeExecutionResult(string $agentName, array $messages): ?AgentExecutionResult
     {
+        foreach ($messages as $message) {
+            foreach (($message[ 'tool_results' ] ?? []) as $toolResult) {
+                $toolName = $toolResult[ 'name' ] ?? $toolResult[ 'tool_name' ] ?? null;
+
+                if ($toolName === FinalizeSuccessTool::name()) {
+                    return new AgentExecutionResult(
+                        output: $toolResult[ 'arguments' ][ 'result' ] ?? null,
+                        messages: $messages,
+                    );
+                }
+
+                if ($toolName === FinalizeErrorTool::name()) {
+                    throw new RuntimeException(
+                        message: sprintf('Agent %s failed: %s', $agentName, $toolResult[ 'arguments' ][ 'message' ] ?? null),
+                    );
+                }
+            }
+        }
+
         if ($this->finalizeErrorTool->wasCalled()) {
 
             throw new RuntimeException(

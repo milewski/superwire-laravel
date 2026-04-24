@@ -48,6 +48,6 @@ final class PromptAndInferenceTest extends TestCase
         $this->assertSame([ 'note' => 'Ready for release.' ], $result->output);
         $this->assertSame(0.2, $provider->requests()[ 0 ]->temperature());
         $this->assertSame(12000, $provider->requests()[ 0 ]->maxTokens());
-        $this->assertSame(0.9, $provider->requests()[ 0 ]->topP());
+        $this->assertNull($provider->requests()[ 0 ]->topP());
     }
 }

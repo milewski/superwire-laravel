@@ -4,8 +4,10 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tools\Internal;
 
-use Prism\Prism\Schema\RawSchema;
-use Prism\Prism\Tool;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Superwire\Laravel\Support\LaravelAiSchema;
+use Superwire\Laravel\Tools\LaravelAiToolFactory;
 use Superwire\Laravel\Tools\WorkflowTool;
 
 class FinalizeSuccessTool implements WorkflowTool
@@ -27,23 +29,23 @@ class FinalizeSuccessTool implements WorkflowTool
         return 'finalize_success';
     }
 
-    public function toPrismTool(array $boundArguments = []): Tool
+    public function toAiTool(array $boundArguments = []): Tool
     {
-        $tool = new Tool();
-
-        return $tool
-            ->as(static::name())
-            ->for('Finish the agent successfully with the final output payload.')
-            ->withoutErrorHandling()
-            ->withParameter(new RawSchema('result', $this->outputSchema))
-            ->using(function (mixed $result): string {
+        return LaravelAiToolFactory::make(
+            name: static::name(),
+            description: 'Finish the agent successfully with the final output payload.',
+            handler: function (array $arguments): string {
 
                 $this->wasCalled = true;
-                $this->result = $result;
+                $this->result = $arguments[ 'result' ] ?? null;
 
                 return 'OK';
 
-            });
+            },
+            schema: fn (JsonSchema $schema): array => [
+                'result' => LaravelAiSchema::type($schema, $this->outputSchema, true),
+            ],
+        );
     }
 
     public function wasCalled(): bool

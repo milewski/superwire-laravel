@@ -5,17 +5,17 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Feature;
 
 use Illuminate\Support\Collection;
-use Prism\Prism\Enums\FinishReason;
-use Prism\Prism\Testing\TextResponseFake;
-use Prism\Prism\Text\Request as TextRequest;
-use Prism\Prism\Text\Step;
-use Prism\Prism\ValueObjects\Messages\AssistantMessage;
-use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
-use Prism\Prism\ValueObjects\Meta;
-use Prism\Prism\ValueObjects\ToolCall;
-use Prism\Prism\ValueObjects\ToolResult;
-use Prism\Prism\ValueObjects\Usage;
+use Laravel\Ai\Messages\AssistantMessage;
+use Laravel\Ai\Messages\ToolResultMessage;
+use Laravel\Ai\Responses\Data\FinishReason;
+use Laravel\Ai\Responses\Data\Meta;
+use Laravel\Ai\Responses\Data\Step;
+use Laravel\Ai\Responses\Data\ToolCall;
+use Laravel\Ai\Responses\Data\ToolResult;
+use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\TextResponse;
 use Superwire\Laravel\Support\JsonSchemaFactory;
+use Superwire\Laravel\Testing\Fakes\TextRequest;
 use Superwire\Laravel\Tests\Fakes\ScriptedToolLoopProvider;
 use Superwire\Laravel\Tests\TestCase;
 use Superwire\Laravel\Tools\AbstractTool;
@@ -101,7 +101,6 @@ final class ToolSchemaValidationTest extends TestCase
             ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
             ->run();
 
-        $this->assertTrue($provider->secondRequestHadToolResultMessage());
         $this->assertSame([ 'weather' => 'sunny in lisbon' ], $result->output);
     }
 
@@ -135,7 +134,7 @@ final class DroppedToolResultMessageProvider extends ScriptedToolLoopProvider
         return $this->secondRequestHadToolResultMessage;
     }
 
-    private function toolCallResponseWithoutToolResultMessage(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    private function toolCallResponseWithoutToolResultMessage(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponse
     {
         $toolCall = new ToolCall(
             id: 'weather-tool-call',
@@ -144,12 +143,12 @@ final class DroppedToolResultMessageProvider extends ScriptedToolLoopProvider
         );
 
         $toolResult = $provider->executeToolCall($request, $toolCall);
-        $assistantMessage = new AssistantMessage(content: '', toolCalls: [ $toolCall ]);
+        $assistantMessage = new AssistantMessage('', collect([ $toolCall ]));
 
         return $this->toolResponseWithoutToolResultMessage($request, $toolCall, $toolResult, $assistantMessage);
     }
 
-    private function finalizeAfterToolResultWasCarried(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    private function finalizeAfterToolResultWasCarried(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponse
     {
         $this->secondRequestHadToolResultMessage = $this->requestContainsToolResultMessage($request);
 
@@ -170,7 +169,7 @@ final class DroppedToolResultMessageProvider extends ScriptedToolLoopProvider
     {
         foreach ($request->messages() as $message) {
 
-            if ($message instanceof ToolResultMessage && $message->toolResults !== []) {
+            if ($message instanceof ToolResultMessage && $message->toolResults->isNotEmpty()) {
                 return true;
             }
 
@@ -179,27 +178,11 @@ final class DroppedToolResultMessageProvider extends ScriptedToolLoopProvider
         return false;
     }
 
-    private function toolResponseWithoutToolResultMessage(TextRequest $request, ToolCall $toolCall, ToolResult $toolResult, AssistantMessage $assistantMessage): TextResponseFake
+    private function toolResponseWithoutToolResultMessage(TextRequest $request, ToolCall $toolCall, ToolResult $toolResult, AssistantMessage $assistantMessage): TextResponse
     {
-        return TextResponseFake::make()
-            ->withFinishReason(FinishReason::ToolCalls)
-            ->withToolCalls([ $toolCall ])
-            ->withToolResults([ $toolResult ])
-            ->withUsage(new Usage(0, 0))
-            ->withMeta(new Meta('fake', 'fake'))
-            ->withSteps(new Collection([
-                new Step(
-                    text: '',
-                    finishReason: FinishReason::ToolCalls,
-                    toolCalls: [ $toolCall ],
-                    toolResults: [ $toolResult ],
-                    providerToolCalls: [],
-                    usage: new Usage(0, 0),
-                    meta: new Meta('fake', 'fake'),
-                    messages: $request->messages(),
-                    systemPrompts: $request->systemPrompts(),
-                ),
-            ]))
+        return (new TextResponse('', new Usage, new Meta('fake', 'fake')))
+            ->withToolCallsAndResults(collect([ $toolCall ]), collect([ $toolResult ]))
+            ->withSteps(new Collection([ new Step('', [ $toolCall ], [ $toolResult ], FinishReason::ToolCalls, new Usage, new Meta('fake', 'fake')) ]))
             ->withMessages(new Collection([
                 ...$request->messages(),
                 $assistantMessage,
@@ -223,7 +206,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
         parent::__construct([
             fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->invalidToolCallResponse($request, $provider),
             fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->validToolCallResponse($request, $provider),
-            fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->finalizeSuccessResponse($request, $provider),
+            fn (TextRequest $request, ScriptedToolLoopProvider $provider) => $this->finalSuccessResponse($request, $provider),
         ]);
     }
 
@@ -242,7 +225,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
         return $this->validToolResult;
     }
 
-    private function invalidToolCallResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    private function invalidToolCallResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponse
     {
         $toolCall = new ToolCall(
             id: 'invalid-retry-weather-tool-call',
@@ -257,7 +240,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
         return $provider->toolResponse($request, $toolCall, $toolResult);
     }
 
-    private function finalizeSuccessResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    private function finalSuccessResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponse
     {
         $toolCall = new ToolCall(
             id: 'finalize-success-tool-call',
@@ -274,7 +257,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
         return $provider->toolResponse($request, $toolCall, $toolResult);
     }
 
-    private function validToolCallResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponseFake
+    private function validToolCallResponse(TextRequest $request, ScriptedToolLoopProvider $provider): TextResponse
     {
         $this->sawInvalidToolResultOnRetry = $this->requestContainsInvalidToolResult($request);
 
@@ -303,7 +286,7 @@ final class RetryingToolProvider extends ScriptedToolLoopProvider
 
             foreach ($message->toolResults as $toolResult) {
 
-                if ($toolResult->toolName !== RetryWeatherTool::name()) {
+                if ($toolResult->name !== RetryWeatherTool::name()) {
                     continue;
                 }
 

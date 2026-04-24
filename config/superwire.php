@@ -14,7 +14,7 @@ return [
         'path' => env('SUPERWIRE_CLI_PATH', base_path('superwire-cli')),
     ],
 
-    'prism' => [
+    'ai' => [
         'providers' => [],
     ],
 ];

@@ -29,10 +29,10 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
         });
 
         config()->set(
-            'prism.providers',
+            'ai.providers',
             array_replace_recursive(
-                config('prism.providers', []),
-                config('superwire.prism.providers', []),
+                config('ai.providers', []),
+                config('superwire.ai.providers', []),
             ),
         );
     }

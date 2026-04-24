@@ -4,7 +4,9 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tools\Internal;
 
-use Prism\Prism\Tool;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Superwire\Laravel\Tools\LaravelAiToolFactory;
 use Superwire\Laravel\Tools\WorkflowTool;
 
 final class FinalizeErrorTool implements WorkflowTool
@@ -18,23 +20,23 @@ final class FinalizeErrorTool implements WorkflowTool
         return 'finalize_error';
     }
 
-    public function toPrismTool(array $boundArguments = []): Tool
+    public function toAiTool(array $boundArguments = []): Tool
     {
-        $tool = new Tool();
-
-        return $tool
-            ->as(self::name())
-            ->for('Finish the agent with an error message when the task cannot be completed.')
-            ->withoutErrorHandling()
-            ->withStringParameter('message', 'The reason the agent cannot complete successfully.')
-            ->using(function (string $message): string {
+        return LaravelAiToolFactory::make(
+            name: self::name(),
+            description: 'Finish the agent with an error message when the task cannot be completed.',
+            handler: function (array $arguments): string {
 
                 $this->wasCalled = true;
-                $this->reason = $message;
+                $this->reason = is_string($arguments[ 'message' ] ?? null) ? $arguments[ 'message' ] : null;
 
                 return 'OK';
 
-            });
+            },
+            schema: fn (JsonSchema $schema): array => [
+                'message' => $schema->string()->description('The reason the agent cannot complete successfully.')->required(),
+            ],
+        );
     }
 
     public function wasCalled(): bool

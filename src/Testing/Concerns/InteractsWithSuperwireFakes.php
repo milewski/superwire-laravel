@@ -4,9 +4,8 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Testing\Concerns;
 
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\PrismManager;
-use Prism\Prism\Providers\Provider as PrismProvider;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\Contracts\Providers\TextProvider;
 use Superwire\Laravel\Testing\Fakes\ScriptedToolLoopProvider;
 use Superwire\Laravel\Testing\Fakes\ToolLoopProvider;
 
@@ -36,20 +35,16 @@ trait InteractsWithSuperwireFakes
         return $provider;
     }
 
-    protected function useFakeProvider(PrismProvider $provider): PrismProvider
+    protected function useFakeProvider(TextProvider $provider): TextProvider
     {
-        app()->instance(PrismManager::class, new class (app(), $provider) extends PrismManager {
-            public function __construct($app, private readonly PrismProvider $provider)
+        app()->instance(AiManager::class, new class (app(), $provider) extends AiManager {
+            public function __construct($app, private readonly TextProvider $provider)
             {
                 parent::__construct($app);
             }
 
-            public function resolve(Provider|string $name, array $providerConfig = []): PrismProvider
+            public function textProvider(?string $name = null): TextProvider
             {
-                if (method_exists($this->provider, 'recordProviderConfig')) {
-                    $this->provider->recordProviderConfig($providerConfig);
-                }
-
                 return $this->provider;
             }
         });
