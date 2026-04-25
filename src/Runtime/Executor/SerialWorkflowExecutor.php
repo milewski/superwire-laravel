@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Agent\Agent;
+use Superwire\Laravel\Data\Agent\OutputFieldReference;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\PromptRenderer;
@@ -86,11 +87,6 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $this->normalize($output);
     }
 
-    /**
-     * @param array<string, mixed> $inputs
-     * @param array<string, mixed> $secrets
-     * @param array<string, mixed> $agentOutputs
-     */
     private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs): array
     {
         $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
@@ -103,17 +99,30 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         $outputs = [];
 
         foreach ($iterable as $item) {
-            $output = $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $agent->forEachIdentifier(), $item);
-            JsonSchemaFactory::validate($agent->output->iteration->jsonSchema, $output, sprintf('agent `%s` iteration output', $agent->name));
+
+            $output = $this->runAgent(
+                definition: $definition,
+                agent: $agent,
+                inputs: $inputs,
+                secrets: $secrets,
+                agentOutputs: $agentOutputs,
+                iterationIdentifier: $agent->forEachIdentifier(),
+                iterationValue: $item,
+            );
+
+            JsonSchemaFactory::validate(
+                schema: $agent->output->iteration->jsonSchema,
+                value: $output,
+                name: sprintf('agent `%s` iteration output', $agent->name),
+            );
+
             $outputs[] = $output;
+
         }
 
         return $outputs;
     }
 
-    /**
-     * @param array<string, mixed> $agentOutputs
-     */
     private function assertDependenciesResolved(Agent $agent, array $agentOutputs): void
     {
         foreach ($agent->dependencies as $dependency) {
@@ -123,31 +132,31 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
     }
 
-    /**
-     * @param array<string, mixed> $inputs
-     * @param array<string, mixed> $secrets
-     * @param array<string, mixed> $agentOutputs
-     * @return array<string, mixed>
-     */
     private function resolveWorkflowOutput(WorkflowDefinition $definition, array $inputs, array $secrets, array $agentOutputs): array
     {
         $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
-        $output = [];
 
-        foreach ($definition->output->fields as $name => $field) {
-            $output[ $name ] = $resolver->resolve($field->ref);
-        }
+        $output = array_map(
+            callback: fn (OutputFieldReference $field) => $resolver->resolve($field->ref),
+            array: $definition->output->fields,
+        );
 
         $schemaDefinition = $definition->output->contract[ 'json_schema' ] ?? null;
 
         if (is_array($schemaDefinition)) {
-            JsonSchemaFactory::validate(JsonSchemaFactory::fromArray($schemaDefinition, 'workflow output'), $output, 'workflow output');
+
+            JsonSchemaFactory::validate(
+                schema: JsonSchemaFactory::fromArray($schemaDefinition, 'workflow output'),
+                value: $output,
+                name: 'workflow output',
+            );
+
         }
 
         return $output;
     }
 
-    private function resolveValue(mixed $value, ReferenceResolver $resolver): mixed
+    private function resolveValue(string | array $value, ReferenceResolver $resolver): mixed
     {
         if (is_array($value) && count($value) === 1 && isset($value[ '$ref' ]) && is_string($value[ '$ref' ])) {
             return $resolver->resolve($value[ '$ref' ]);
@@ -157,13 +166,10 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             return $value;
         }
 
-        $resolved = [];
-
-        foreach ($value as $key => $child) {
-            $resolved[ $key ] = $this->resolveValue($child, $resolver);
-        }
-
-        return $resolved;
+        return array_map(
+            callback: fn (string | array $child) => $this->resolveValue($child, $resolver),
+            array: $value,
+        );
     }
 
     private function normalize(mixed $value): mixed
