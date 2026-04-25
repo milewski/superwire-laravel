@@ -7,12 +7,14 @@ namespace Superwire\Laravel\Runtime\Runner;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\JsonSchema\Types\Type;
+use InvalidArgumentException;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
 
 final readonly class LaravelAiAgentRunner implements AgentRunner
@@ -28,10 +30,10 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
     {
         $this->configureProvider(invocation: $invocation);
 
-        $workflowType = $this->workflowType(invocation: $invocation);
+        $outputField = $this->outputField(invocation: $invocation);
         $provider = $this->ai->textProvider(name: $invocation->provider->name);
         $response = $provider->prompt(new AgentPrompt(
-            agent: $this->agentForType(workflowType: $workflowType),
+            agent: $this->agentForOutput(field: $outputField),
             prompt: $invocation->prompt,
             attachments: [],
             provider: $provider,
@@ -45,24 +47,26 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
         return $response->text;
     }
 
-    private function agentForType(array $workflowType): AnonymousAgent
+    private function agentForOutput(OutputField $field): AnonymousAgent
     {
-        if (($workflowType[ 'kind' ] ?? null) !== 'object') {
-            return new AnonymousAgent(
+        if ($field->isObject()) {
+
+            return new StructuredAnonymousAgent(
                 instructions: '',
                 messages: [],
                 tools: [],
+                schema: fn (JsonSchemaTypeFactory $schema): array => $this->schemaFields(
+                    fields: $field->fields(),
+                    schema: $schema,
+                ),
             );
+
         }
 
-        return new StructuredAnonymousAgent(
+        return new AnonymousAgent(
             instructions: '',
             messages: [],
             tools: [],
-            schema: fn (JsonSchemaTypeFactory $schema): array => $this->schemaFields(
-                fields: $workflowType[ 'fields' ] ?? [],
-                schema: $schema,
-            ),
         );
     }
 
@@ -75,36 +79,66 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
                 continue;
             }
 
-            $schemaFields[ $name ] = $this->schemaType(workflowType: $fieldType, schema: $schema)->required();
+            $schemaFields[ $name ] = $this->schemaType(field: OutputField::fromWorkflowType($fieldType), schema: $schema)->required();
         }
 
         return $schemaFields;
     }
 
-    private function schemaType(array $workflowType, JsonSchemaTypeFactory $schema): Type
+    private function schemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
     {
-        return match ($workflowType[ 'kind' ] ?? null) {
+        return match ($field->kind()) {
             'string' => $schema->string(),
             'integer' => $schema->integer(),
             'number', 'float' => $schema->number(),
             'boolean' => $schema->boolean(),
-            'array' => $schema->array()->items($this->schemaType(
-                workflowType: is_array($workflowType[ 'item_type' ] ?? null) ? $workflowType[ 'item_type' ] : [ 'kind' => 'string' ],
-                schema: $schema,
-            )),
+            'null' => $schema->string()->nullable(),
+            'string_enum' => $schema->string()->enum($field->enumValues()),
+            'array' => $this->arraySchemaType(field: $field, schema: $schema),
+            'tuple' => $schema->array(),
             'object' => $schema->object($this->schemaFields(
-                fields: is_array($workflowType[ 'fields' ] ?? null) ? $workflowType[ 'fields' ] : [],
+                fields: $field->fields(),
                 schema: $schema,
             )),
+            'union' => $this->unionSchemaType(field: $field, schema: $schema),
             default => throw new InvalidArgumentException('Unsupported structured output type.'),
         };
     }
 
-    private function workflowType(AgentInvocation $invocation): array
+    private function arraySchemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
+    {
+        $type = $schema->array()->items($this->schemaType(
+            field: $field->itemType(),
+            schema: $schema,
+        ));
+
+        if ($field->fixedLength() !== null) {
+            $type->min($field->fixedLength())->max($field->fixedLength());
+        }
+
+        return $type;
+    }
+
+    private function unionSchemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
+    {
+        $members = $field->unionMembers();
+        $nonNullMembers = array_values(array_filter(
+            array: $members,
+            callback: fn (OutputField $member): bool => $member->kind() !== 'null',
+        ));
+
+        if (count($nonNullMembers) === 1 && count($members) === 2) {
+            return $this->schemaType(field: $nonNullMembers[ 0 ], schema: $schema)->nullable();
+        }
+
+        return $schema->string();
+    }
+
+    private function outputField(AgentInvocation $invocation): OutputField
     {
         return $invocation->agent->runsForEach()
-            ? $invocation->agent->output->iteration->workflowType
-            : $invocation->agent->output->finalOutput->workflowType;
+            ? $invocation->agent->output->iteration
+            : $invocation->agent->output->finalOutput;
     }
 
     private function configureProvider(AgentInvocation $invocation): void

@@ -14,24 +14,24 @@ final class OutputParser
     {
         return $this->parseValue(
             value: $output,
-            workflowType: $field->workflowType,
+            field: $field,
             agentName: $agent->name,
         );
     }
 
-    private function parseValue(string | array | int | float | bool | null $value, array $workflowType, string $agentName): array | string | int | float | bool | null
+    private function parseValue(string | array | int | float | bool | null $value, OutputField $field, string $agentName): array | string | int | float | bool | null
     {
-        return match ($workflowType[ 'kind' ] ?? null) {
+        return match ($field->kind()) {
             'string' => $this->parseString(value: $value, agentName: $agentName),
             'integer' => $this->parseInteger(value: $value, agentName: $agentName),
             'number', 'float' => $this->parseNumber(value: $value, agentName: $agentName),
             'boolean' => $this->parseBoolean(value: $value, agentName: $agentName),
             'null' => $this->parseNull(value: $value, agentName: $agentName),
-            'string_enum' => $this->parseStringEnum(value: $value, workflowType: $workflowType, agentName: $agentName),
-            'array' => $this->parseArray(value: $value, workflowType: $workflowType, agentName: $agentName),
-            'tuple' => $this->parseTuple(value: $value, workflowType: $workflowType, agentName: $agentName),
-            'object' => $this->parseObject(value: $value, workflowType: $workflowType, agentName: $agentName),
-            'union' => $this->parseUnion(value: $value, workflowType: $workflowType, agentName: $agentName),
+            'string_enum' => $this->parseStringEnum(value: $value, field: $field, agentName: $agentName),
+            'array' => $this->parseArray(value: $value, field: $field, agentName: $agentName),
+            'tuple' => $this->parseTuple(value: $value, field: $field, agentName: $agentName),
+            'object' => $this->parseObject(value: $value, field: $field, agentName: $agentName),
+            'union' => $this->parseUnion(value: $value, field: $field, agentName: $agentName),
             default => throw new InvalidArgumentException(sprintf('Agent `%s` declares an unsupported output type.', $agentName)),
         };
     }
@@ -99,19 +99,18 @@ final class OutputParser
         throw new InvalidArgumentException(sprintf('Agent `%s` returned output that cannot be parsed as null.', $agentName));
     }
 
-    private function parseStringEnum(string | array | int | float | bool | null $value, array $workflowType, string $agentName): string
+    private function parseStringEnum(string | array | int | float | bool | null $value, OutputField $field, string $agentName): string
     {
         $text = $this->parseString(value: $value, agentName: $agentName);
-        $values = is_array($workflowType[ 'values' ] ?? null) ? $workflowType[ 'values' ] : [];
 
-        if (!in_array($text, $values, true)) {
+        if (!in_array($text, $field->enumValues(), true)) {
             throw new InvalidArgumentException(sprintf('Agent `%s` returned output that is not an allowed enum value.', $agentName));
         }
 
         return $text;
     }
 
-    private function parseArray(string | array | int | float | bool | null $value, array $workflowType, string $agentName): array
+    private function parseArray(string | array | int | float | bool | null $value, OutputField $field, string $agentName): array
     {
         $array = $this->arrayValue(value: $value, agentName: $agentName, expectedType: 'array');
 
@@ -119,28 +118,26 @@ final class OutputParser
             throw new InvalidArgumentException(sprintf('Agent `%s` returned output that cannot be parsed as an array.', $agentName));
         }
 
-        $fixedLength = $workflowType[ 'fixed_length' ] ?? null;
+        $fixedLength = $field->fixedLength();
 
         if (is_int($fixedLength) && count($array) !== $fixedLength) {
             throw new InvalidArgumentException(sprintf('Agent `%s` returned output that does not match the fixed array length.', $agentName));
         }
 
-        $itemType = is_array($workflowType[ 'item_type' ] ?? null) ? $workflowType[ 'item_type' ] : [ 'kind' => 'string' ];
-
         return array_map(
             callback: fn (string | array | int | float | bool | null $item): array | string | int | float | bool | null => $this->parseValue(
                 value: $item,
-                workflowType: $itemType,
+                field: $field->itemType(),
                 agentName: $agentName,
             ),
             array: $array,
         );
     }
 
-    private function parseTuple(string | array | int | float | bool | null $value, array $workflowType, string $agentName): array
+    private function parseTuple(string | array | int | float | bool | null $value, OutputField $field, string $agentName): array
     {
         $array = $this->arrayValue(value: $value, agentName: $agentName, expectedType: 'tuple');
-        $items = is_array($workflowType[ 'items' ] ?? null) ? $workflowType[ 'items' ] : [];
+        $items = $field->tupleItems();
 
         if (!array_is_list($array) || count($array) !== count($items)) {
             throw new InvalidArgumentException(sprintf('Agent `%s` returned output that cannot be parsed as a tuple.', $agentName));
@@ -149,17 +146,19 @@ final class OutputParser
         $tuple = [];
 
         foreach ($array as $index => $item) {
+
             $tuple[] = $this->parseValue(
                 value: $item,
-                workflowType: is_array($items[ $index ] ?? null) ? $items[ $index ] : [ 'kind' => 'string' ],
+                field: $items[ $index ] ?? OutputField::fromWorkflowType([ 'kind' => 'string' ]),
                 agentName: $agentName,
             );
+
         }
 
         return $tuple;
     }
 
-    private function parseObject(string | array | int | float | bool | null $value, array $workflowType, string $agentName): array
+    private function parseObject(string | array | int | float | bool | null $value, OutputField $field, string $agentName): array
     {
         $array = $this->arrayValue(value: $value, agentName: $agentName, expectedType: 'object');
 
@@ -167,7 +166,7 @@ final class OutputParser
             throw new InvalidArgumentException(sprintf('Agent `%s` returned output that cannot be parsed as an object.', $agentName));
         }
 
-        $fields = is_array($workflowType[ 'fields' ] ?? null) ? $workflowType[ 'fields' ] : [];
+        $fields = $field->fields();
         $object = $array;
 
         foreach ($fields as $name => $fieldType) {
@@ -182,7 +181,7 @@ final class OutputParser
 
             $object[ $name ] = $this->parseValue(
                 value: $array[ $name ],
-                workflowType: $fieldType,
+                field: OutputField::fromWorkflowType($fieldType),
                 agentName: $agentName,
             );
 
@@ -191,21 +190,13 @@ final class OutputParser
         return $object;
     }
 
-    private function parseUnion(string | array | int | float | bool | null $value, array $workflowType, string $agentName): array | string | int | float | bool | null
+    private function parseUnion(string | array | int | float | bool | null $value, OutputField $field, string $agentName): array | string | int | float | bool | null
     {
-        $members = is_array($workflowType[ 'members' ] ?? null) ? $workflowType[ 'members' ] : [];
-
-        foreach ($members as $member) {
-
-            if (!is_array($member)) {
-                continue;
-            }
-
+        foreach ($field->unionMembers() as $member) {
             try {
-                return $this->parseValue(value: $value, workflowType: $member, agentName: $agentName);
+                return $this->parseValue(value: $value, field: $member, agentName: $agentName);
             } catch (InvalidArgumentException) {
             }
-
         }
 
         throw new InvalidArgumentException(sprintf('Agent `%s` returned output that cannot be parsed as any union member.', $agentName));
