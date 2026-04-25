@@ -80,6 +80,39 @@ final class ParallelWorkflowExecutorTest extends TestCase
         $this->assertGreaterThan(0.38, $elapsed);
     }
 
+    public function test_it_executes_for_each_iterations_in_parallel(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            $this->markTestSkipped('PCNTL is required for parallel workflow execution.');
+        }
+
+        $runner = FakeAgentRunner::fake([
+            'counter' => [ 1, 2, 3 ],
+            'speller' => function (AgentInvocation $invocation): string {
+                usleep(200_000);
+
+                return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+            },
+        ]);
+
+        $executor = new ParallelWorkflowExecutor($runner);
+        $started = microtime(true);
+
+        $result = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'simple_loop.wire'),
+            secrets: [
+                'api_key' => 'test-key',
+                'endpoint' => 'http://example.test/v1',
+                'model' => 'test-model',
+            ],
+        );
+
+        $elapsed = microtime(true) - $started;
+
+        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three' ] ], actual: $result->output);
+        $this->assertLessThan(0.45, $elapsed);
+    }
+
     public function test_it_passes_output_strategy_to_parallel_agent_invocations(): void
     {
         if (!function_exists('pcntl_fork')) {

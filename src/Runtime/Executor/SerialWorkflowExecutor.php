@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
-use Spatie\Fork\Fork;
 use TypeError;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
@@ -18,6 +17,7 @@ use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\AgentRunResult;
+use Superwire\Laravel\Runtime\Executor\Concerns\ResetsDatabaseConnectionsForForks;
 use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
@@ -30,6 +30,8 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 
 readonly class SerialWorkflowExecutor implements WorkflowExecutor
 {
+    use ResetsDatabaseConnectionsForForks;
+
     public function __construct(
         protected AgentRunner $agentRunner,
         protected PromptRenderer $promptRenderer = new PromptRenderer(),
@@ -269,7 +271,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
 
         }
 
-        $results = Fork::new()
+        $results = $this->fork()
             ->concurrent(max(1, (int) config('superwire.runtime.max_parallel_agents', 4)))
             ->run(...$tasks);
 

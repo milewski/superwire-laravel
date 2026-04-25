@@ -19,9 +19,9 @@ final class WorkflowTest extends TestCase
 {
     public function test_temp_live_example(): void
     {
-//        if (getenv('SUPERWIRE_RUN_LIVE_TESTS') !== '1') {
-//            $this->markTestSkipped('Set SUPERWIRE_RUN_LIVE_TESTS=1 to run the live LLM workflow test.');
-//        }
+        if (getenv('SUPERWIRE_RUN_LIVE_TESTS') !== '1') {
+            $this->markTestSkipped('Set SUPERWIRE_RUN_LIVE_TESTS=1 to run the live LLM workflow test.');
+        }
 
         $result = Workflow::fromFile(__DIR__ . '/Stubs/example.wire')
             ->usingRequestMode()

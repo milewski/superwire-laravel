@@ -11,10 +11,10 @@ use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
+use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
-use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\TestCase;
 
 final class SerialWorkflowExecutorTest extends TestCase
@@ -215,6 +215,59 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three' ] ], actual: $result->output);
         $this->assertLessThan(0.45, $elapsed);
+    }
+
+    public function test_it_purges_database_connections_before_forked_for_each_iterations(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            $this->markTestSkipped('PCNTL is required for parallel for_each execution.');
+        }
+
+        $database = new class {
+
+            public int $purges = 0;
+
+            public function getConnections(): array
+            {
+                return [
+                    'default' => new class {
+                    },
+                ];
+            }
+
+            public function purge(?string $name = null): void
+            {
+                $this->purges++;
+            }
+
+        };
+
+        app()->instance('db', $database);
+
+        $runner = FakeAgentRunner::fake([
+            'counter' => [ 1, 2 ],
+            'speller' => function (AgentInvocation $invocation): string {
+                if (app('db')->purges !== 1) {
+                    throw new InvalidArgumentException('Expected the forked child to purge database connections before running.');
+                }
+
+                return [ 'one', 'two' ][ (int) $invocation->iterationValue - 1 ];
+            },
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $result = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'simple_loop.wire'),
+            secrets: [
+                'api_key' => 'test-key',
+                'endpoint' => 'http://example.test/v1',
+                'model' => 'test-model',
+            ],
+        );
+
+        $this->assertSame(0, $database->purges);
+        $this->assertSame([ 'numbers' => [ 'one', 'two' ] ], $result->output);
     }
 
     public function test_it_stops_retrying_agent_outputs_after_configured_attempts(): void
