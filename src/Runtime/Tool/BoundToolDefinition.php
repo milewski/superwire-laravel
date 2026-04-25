@@ -11,6 +11,8 @@ final readonly class BoundToolDefinition
     public function __construct(
         public ToolDefinition $definition,
         public array $bounded,
+        public string $runId,
+        public string $agentName,
     )
     {
     }

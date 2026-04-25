@@ -13,6 +13,7 @@ use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Http\Controllers\InternalToolController;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
+use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Runtime\Tool\ToolRegistry;
 use Superwire\Laravel\Runtime\WorkflowCompiler;
 
@@ -23,6 +24,7 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../config/superwire.php', 'superwire');
 
         $this->app->singleton(ToolRegistry::class);
+        $this->app->singleton(ToolScopeRegistry::class);
         $this->app->bind(AgentRunner::class, LaravelAiAgentRunner::class);
 
         $this->app->bind(WorkflowCompilerInterface::class, function (): WorkflowCompilerInterface {
@@ -44,7 +46,7 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
 
         }
 
-        Route::post('/_superwire/tools/{tool}', InternalToolController::class)
+        Route::post('/_superwire/workflows/{workflow}/agents/{agent}/tools/{tool}', InternalToolController::class)
             ->name('superwire.tools.invoke');
     }
 }

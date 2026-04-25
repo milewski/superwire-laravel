@@ -5,9 +5,11 @@ declare(strict_types = 1);
 namespace Superwire\Laravel;
 
 use InvalidArgumentException;
+use Illuminate\Support\Str;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
+use Superwire\Laravel\Tools\AbstractTool;
 
 final class Workflow
 {
@@ -15,6 +17,7 @@ final class Workflow
         private readonly WorkflowDefinition $definition,
         private array $inputs = [],
         private array $secrets = [],
+        private array $tools = [],
     )
     {
     }
@@ -63,12 +66,22 @@ final class Workflow
         return $workflow;
     }
 
+    public function withTools(array $tools): self
+    {
+        $workflow = clone $this;
+        $workflow->tools = $tools;
+
+        return $workflow;
+    }
+
     public function run(): array
     {
         return app(WorkflowExecutor::class)->execute(
             definition: $this->definition,
             inputs: $this->inputs,
             secrets: $this->secrets,
+            tools: $this->tools,
+            runId: (string) Str::uuid(),
         );
     }
 

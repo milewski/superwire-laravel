@@ -7,6 +7,8 @@ namespace Superwire\Laravel\Tests;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
+use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
+use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
 use Superwire\Laravel\Workflow;
 
 final class WorkflowTest extends TestCase
@@ -85,6 +87,26 @@ final class WorkflowTest extends TestCase
         $this->assertSame(
             expected: 'greeting',
             actual: $definition->agents->first()->name,
+        );
+    }
+
+    public function test_it_accepts_tools_for_the_current_workflow_run(): void
+    {
+        FakeAgentRunner::fake([
+            'assistant' => function (AgentInvocation $invocation): array {
+                $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
+
+                return [ 'weather' => 'sunny' ];
+            },
+        ]);
+
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
+            ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
+            ->run();
+
+        $this->assertSame(
+            expected: [ 'weather' => 'sunny' ],
+            actual: $output,
         );
     }
 }

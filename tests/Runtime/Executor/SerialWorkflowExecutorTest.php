@@ -9,6 +9,8 @@ use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
+use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
+use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\TestCase;
 
@@ -210,6 +212,7 @@ final class SerialWorkflowExecutorTest extends TestCase
             expected: [ 'weather' => 'sunny' ],
             actual: $executor->execute(
                 definition: $this->workflowDefinition(fixture: 'tool_schema_retry.wire'),
+                tools: [ new BoundSchemaTool(), new RetryWeatherTool() ],
             ),
         );
     }

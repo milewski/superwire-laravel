@@ -15,7 +15,9 @@ use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
+use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Support\JsonSchemaFactory;
+use Superwire\Laravel\Tools\AbstractTool;
 
 final readonly class SerialWorkflowExecutor implements WorkflowExecutor
 {
@@ -23,46 +25,57 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         private AgentRunner $agentRunner,
         private PromptRenderer $promptRenderer = new PromptRenderer(),
         private OutputParser $outputParser = new OutputParser(),
+        private ToolScopeRegistry $toolScopeRegistry = new ToolScopeRegistry(),
     )
     {
     }
 
-    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = []): array
+    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null): array
     {
         $definition->validateInputValues($inputs);
         $definition->validateSecretValues($secrets);
+        $runId ??= hash('sha256', $definition->workflowPath . serialize($inputs) . serialize($secrets));
+        $toolMap = $this->toolMap(tools: $tools);
 
-        $agentOutputs = [];
+        try {
 
-        foreach ($definition->execution->batches as $batch) {
+            $agentOutputs = [];
 
-            foreach ($batch as $agentName) {
+            foreach ($definition->execution->batches as $batch) {
 
-                $agent = $definition->agents->findByName($agentName);
+                foreach ($batch as $agentName) {
 
-                $this->assertDependenciesResolved(
-                    agent: $agent,
-                    agentOutputs: $agentOutputs,
-                );
+                    $agent = $definition->agents->findByName($agentName);
 
-                $agentOutputs[ $agent->name ] = $agent->runsForEach()
-                    ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs)
-                    : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs);
+                    $this->assertDependenciesResolved(
+                        agent: $agent,
+                        agentOutputs: $agentOutputs,
+                    );
 
-                JsonSchemaFactory::validate(
-                    schema: $agent->output->finalOutput->jsonSchema,
-                    value: $agentOutputs[ $agent->name ],
-                    name: sprintf('agent `%s` output', $agent->name),
-                );
+                    $agentOutputs[ $agent->name ] = $agent->runsForEach()
+                        ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId)
+                        : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId);
+
+                    JsonSchemaFactory::validate(
+                        schema: $agent->output->finalOutput->jsonSchema,
+                        value: $agentOutputs[ $agent->name ],
+                        name: sprintf('agent `%s` output', $agent->name),
+                    );
+
+                }
 
             }
 
-        }
+            return $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs);
 
-        return $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs);
+        } finally {
+
+            $this->toolScopeRegistry->forget(runId: $runId);
+
+        }
     }
 
-    private function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, ?string $iterationIdentifier = null, mixed $iterationValue = null): mixed
+    private function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, ?string $iterationIdentifier = null, mixed $iterationValue = null): mixed
     {
         $resolver = new ReferenceResolver(
             inputs: $inputs,
@@ -83,7 +96,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             inputs: $inputs,
             secrets: $secrets,
             agentOutputs: $agentOutputs,
-            tools: $this->resolveTools(definition: $definition, agent: $agent, resolver: $resolver),
+            tools: $this->resolveTools(definition: $definition, agent: $agent, resolver: $resolver, toolMap: $toolMap, runId: $runId),
             iterationIdentifier: $iterationIdentifier,
             iterationValue: $iterationValue,
         ));
@@ -95,7 +108,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs): array
+    private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId): array
     {
         $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
         $iterable = $resolver->resolve($agent->forEachReference());
@@ -114,6 +127,8 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 inputs: $inputs,
                 secrets: $secrets,
                 agentOutputs: $agentOutputs,
+                toolMap: $toolMap,
+                runId: $runId,
                 iterationIdentifier: $agent->forEachIdentifier(),
                 iterationValue: $item,
             );
@@ -193,7 +208,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $model;
     }
 
-    private function resolveTools(WorkflowDefinition $definition, Agent $agent, ReferenceResolver $resolver): array
+    private function resolveTools(WorkflowDefinition $definition, Agent $agent, ReferenceResolver $resolver, array $toolMap, string $runId): array
     {
         $tools = [];
 
@@ -209,16 +224,43 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 throw new InvalidArgumentException(sprintf('Agent `%s` references unknown tool `%s`.', $agent->name, $toolPayload[ 'name' ]));
             }
 
-            $tools[] = new BoundToolDefinition(
+            if (!isset($toolMap[ $toolDefinition->name ])) {
+                throw new InvalidArgumentException(sprintf('Workflow tool `%s` was not provided.', $toolDefinition->name));
+            }
+
+            $binding = new BoundToolDefinition(
                 definition: $toolDefinition,
                 bounded: $this->resolveValue(
                     value: is_array($toolPayload[ 'bind' ] ?? null) ? $toolPayload[ 'bind' ] : [],
                     resolver: $resolver,
                 ),
+                runId: $runId,
+                agentName: $agent->name,
             );
+
+            $this->toolScopeRegistry->register(tool: $toolMap[ $toolDefinition->name ], binding: $binding);
+
+            $tools[] = $binding;
 
         }
 
         return $tools;
+    }
+
+    private function toolMap(array $tools): array
+    {
+        $toolMap = [];
+
+        foreach ($tools as $tool) {
+
+            if (!$tool instanceof AbstractTool) {
+                throw new InvalidArgumentException('Workflow tools must extend ' . AbstractTool::class . '.');
+            }
+
+            $toolMap[ $tool->name() ] = $tool;
+
+        }
+
+        return $toolMap;
     }
 }

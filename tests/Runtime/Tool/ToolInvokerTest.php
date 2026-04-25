@@ -20,7 +20,8 @@ final class ToolInvokerTest extends TestCase
         $registry = new ToolRegistry();
         $registry->register(tool: $tool, name: 'search');
 
-        $result = new ToolInvoker(registry: $registry)->invoke(
+        $result = new ToolInvoker()->invoke(
+            tool: $registry->get(name: 'search'),
             definition: $this->toolDefinition(name: 'search'),
             input: [ 'query' => 'laravel' ],
             bounded: [ 'tenant_id' => 'tenant-123' ],
@@ -42,7 +43,8 @@ final class ToolInvokerTest extends TestCase
         $registry = new ToolRegistry();
         $registry->register(tool: new TypedSearchTool(), name: 'typed_search');
 
-        $result = new ToolInvoker(registry: $registry)->invoke(
+        $result = new ToolInvoker()->invoke(
+            tool: $registry->get(name: 'typed_search'),
             definition: $this->toolDefinition(name: 'typed_search'),
             input: [ 'query' => 'laravel' ],
             bounded: [ 'tenant_id' => 'tenant-123' ],
@@ -63,7 +65,8 @@ final class ToolInvokerTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('tool `search` input');
 
-        new ToolInvoker(registry: $registry)->invoke(
+        new ToolInvoker()->invoke(
+            tool: $registry->get(name: 'search'),
             definition: $this->toolDefinition(name: 'search'),
             input: [],
             bounded: [ 'tenant_id' => 'tenant-123' ],

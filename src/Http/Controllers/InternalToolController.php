@@ -7,12 +7,12 @@ namespace Superwire\Laravel\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
-use Superwire\Laravel\Data\Workflow\ToolDefinition;
+use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Runtime\Tool\ToolInvoker;
 
 final readonly class InternalToolController
 {
-    public function __invoke(Request $request, string $tool, ToolInvoker $invoker): JsonResponse
+    public function __invoke(Request $request, string $workflow, string $agent, string $tool, ToolScopeRegistry $scopeRegistry, ToolInvoker $invoker): JsonResponse
     {
         $token = (string) config('superwire.tools.internal_token');
 
@@ -22,13 +22,13 @@ final readonly class InternalToolController
 
         try {
 
-            $definitionPayload = $request->array(key: 'definition');
-            $definitionPayload[ 'name' ] = $tool;
+            $scopedTool = $scopeRegistry->get(runId: $workflow, agentName: $agent, toolName: $tool);
 
             $result = $invoker->invoke(
-                definition: ToolDefinition::fromArray($definitionPayload),
+                tool: $scopedTool->tool,
+                definition: $scopedTool->binding->definition,
                 input: $request->array(key: 'input'),
-                bounded: $request->array(key: 'bounded'),
+                bounded: $scopedTool->binding->bounded,
             );
 
             return new JsonResponse([ 'result' => $result ]);

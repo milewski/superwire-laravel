@@ -18,14 +18,12 @@ use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
-use Superwire\Laravel\Runtime\Tool\ToolInvoker;
 
 final readonly class LaravelAiAgentRunner implements AgentRunner
 {
     public function __construct(
         private AiManager $ai,
         private Repository $config,
-        private ToolInvoker $toolInvoker,
     )
     {
     }
@@ -77,12 +75,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
     private function tools(AgentInvocation $invocation): array
     {
         return array_map(
-            callback: function (BoundToolDefinition $tool): LaravelAiTool {
-                return new LaravelAiTool(
-                    tool: $tool,
-                    invoker: $this->toolInvoker,
-                );
-            },
+            callback: fn (BoundToolDefinition $tool) => new LaravelAiTool($tool),
             array: $invocation->tools,
         );
     }
@@ -115,10 +108,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
             'string_enum' => $schema->string()->enum($field->enumValues()),
             'array' => $this->arraySchemaType(field: $field, schema: $schema),
             'tuple' => $schema->array(),
-            'object' => $schema->object($this->schemaFields(
-                fields: $field->fields(),
-                schema: $schema,
-            )),
+            'object' => $schema->object($this->schemaFields(fields: $field->fields(), schema: $schema)),
             'union' => $this->unionSchemaType(field: $field, schema: $schema),
             default => throw new InvalidArgumentException('Unsupported structured output type.'),
         };

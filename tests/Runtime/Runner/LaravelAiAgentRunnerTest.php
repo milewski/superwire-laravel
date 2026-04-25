@@ -21,8 +21,6 @@ use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
-use Superwire\Laravel\Runtime\Tool\ToolInvoker;
-use Superwire\Laravel\Runtime\Tool\ToolRegistry;
 use Superwire\Laravel\Tests\TestCase;
 
 final class LaravelAiAgentRunnerTest extends TestCase
@@ -42,7 +40,6 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: $ai,
             config: $this->app[ 'config' ],
-            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $output = $runner->run(
@@ -83,7 +80,6 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: new RecordingAiManager(app: $this->app, provider: $provider),
             config: $this->app[ 'config' ],
-            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $output = $runner->run(
@@ -120,7 +116,6 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: new RecordingAiManager(app: $this->app, provider: $provider),
             config: $this->app[ 'config' ],
-            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $output = $runner->run(
@@ -155,7 +150,6 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: new RecordingAiManager(app: $this->app, provider: $provider),
             config: $this->app[ 'config' ],
-            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $runner->run(invocation: new AgentInvocation(
@@ -171,6 +165,8 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 new BoundToolDefinition(
                     definition: $definition->toolDefinitionNamed(toolName: 'bound_schema_tool'),
                     bounded: [ 'tenant_id' => 'tenant-123' ],
+                    runId: 'run-1',
+                    agentName: 'assistant',
                 ),
             ],
         ));
