@@ -16,12 +16,16 @@ use Laravel\Ai\Responses\StructuredAgentResponse;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
+use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
+use Superwire\Laravel\Runtime\Tool\ToolInvoker;
 
 final readonly class LaravelAiAgentRunner implements AgentRunner
 {
     public function __construct(
         private AiManager $ai,
         private Repository $config,
+        private ToolInvoker $toolInvoker,
     )
     {
     }
@@ -33,7 +37,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
         $outputField = $this->outputField(invocation: $invocation);
         $provider = $this->ai->textProvider(name: $invocation->provider->name);
         $response = $provider->prompt(new AgentPrompt(
-            agent: $this->agentForOutput(field: $outputField),
+            agent: $this->agentForOutput(field: $outputField, invocation: $invocation),
             prompt: $invocation->prompt,
             attachments: [],
             provider: $provider,
@@ -47,14 +51,14 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
         return $response->text;
     }
 
-    private function agentForOutput(OutputField $field): AnonymousAgent
+    private function agentForOutput(OutputField $field, AgentInvocation $invocation): AnonymousAgent
     {
         if ($field->isObject()) {
 
             return new StructuredAnonymousAgent(
                 instructions: '',
                 messages: [],
-                tools: [],
+                tools: $this->tools(invocation: $invocation),
                 schema: fn (JsonSchemaTypeFactory $schema): array => $this->schemaFields(
                     fields: $field->fields(),
                     schema: $schema,
@@ -66,7 +70,20 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
         return new AnonymousAgent(
             instructions: '',
             messages: [],
-            tools: [],
+            tools: $this->tools(invocation: $invocation),
+        );
+    }
+
+    private function tools(AgentInvocation $invocation): array
+    {
+        return array_map(
+            callback: function (BoundToolDefinition $tool): LaravelAiTool {
+                return new LaravelAiTool(
+                    tool: $tool,
+                    invoker: $this->toolInvoker,
+                );
+            },
+            array: $invocation->tools,
         );
     }
 
@@ -75,11 +92,13 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
         $schemaFields = [];
 
         foreach ($fields as $name => $fieldType) {
+
             if (!is_string($name) || !is_array($fieldType)) {
                 continue;
             }
 
             $schemaFields[ $name ] = $this->schemaType(field: OutputField::fromWorkflowType($fieldType), schema: $schema)->required();
+
         }
 
         return $schemaFields;

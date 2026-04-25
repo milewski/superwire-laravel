@@ -14,6 +14,7 @@ use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
+use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Support\JsonSchemaFactory;
 
 final readonly class SerialWorkflowExecutor implements WorkflowExecutor
@@ -82,6 +83,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             inputs: $inputs,
             secrets: $secrets,
             agentOutputs: $agentOutputs,
+            tools: $this->resolveTools(definition: $definition, agent: $agent, resolver: $resolver),
             iterationIdentifier: $iterationIdentifier,
             iterationValue: $iterationValue,
         ));
@@ -191,4 +193,32 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $model;
     }
 
+    private function resolveTools(WorkflowDefinition $definition, Agent $agent, ReferenceResolver $resolver): array
+    {
+        $tools = [];
+
+        foreach ($agent->tools as $toolPayload) {
+
+            if (!is_array($toolPayload) || !is_string($toolPayload[ 'name' ] ?? null)) {
+                continue;
+            }
+
+            $toolDefinition = $definition->toolDefinitionNamed($toolPayload[ 'name' ]);
+
+            if ($toolDefinition === null) {
+                throw new InvalidArgumentException(sprintf('Agent `%s` references unknown tool `%s`.', $agent->name, $toolPayload[ 'name' ]));
+            }
+
+            $tools[] = new BoundToolDefinition(
+                definition: $toolDefinition,
+                bounded: $this->resolveValue(
+                    value: is_array($toolPayload[ 'bind' ] ?? null) ? $toolPayload[ 'bind' ] : [],
+                    resolver: $resolver,
+                ),
+            );
+
+        }
+
+        return $tools;
+    }
 }

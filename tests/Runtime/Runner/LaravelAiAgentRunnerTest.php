@@ -19,6 +19,10 @@ use RuntimeException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
+use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
+use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
+use Superwire\Laravel\Runtime\Tool\ToolInvoker;
+use Superwire\Laravel\Runtime\Tool\ToolRegistry;
 use Superwire\Laravel\Tests\TestCase;
 
 final class LaravelAiAgentRunnerTest extends TestCase
@@ -35,7 +39,11 @@ final class LaravelAiAgentRunnerTest extends TestCase
         );
 
         $ai = new RecordingAiManager(app: $this->app, provider: $provider);
-        $runner = new LaravelAiAgentRunner($ai, $this->app[ 'config' ]);
+        $runner = new LaravelAiAgentRunner(
+            ai: $ai,
+            config: $this->app[ 'config' ],
+            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
+        );
 
         $output = $runner->run(
             invocation: $this->invocation(
@@ -75,6 +83,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: new RecordingAiManager(app: $this->app, provider: $provider),
             config: $this->app[ 'config' ],
+            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $output = $runner->run(
@@ -111,6 +120,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $runner = new LaravelAiAgentRunner(
             ai: new RecordingAiManager(app: $this->app, provider: $provider),
             config: $this->app[ 'config' ],
+            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
         );
 
         $output = $runner->run(
@@ -125,6 +135,50 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
         $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
         $this->assertSame(expected: '42', actual: $output);
+    }
+
+    public function test_it_exposes_bound_tools_to_laravel_ai_agent(): void
+    {
+        $provider = new RecordingTextProvider(
+            response: new AgentResponse(
+                invocationId: 'invocation-1',
+                text: 'Weather is sunny.',
+                usage: new Usage(),
+                meta: new Meta(),
+            ),
+        );
+
+        $definition = app(WorkflowCompiler::class)->compile(
+            workflowPath: __DIR__ . '/../../Stubs/tool_schema_retry.wire',
+        );
+
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: $provider),
+            config: $this->app[ 'config' ],
+            toolInvoker: new ToolInvoker(registry: new ToolRegistry()),
+        );
+
+        $runner->run(invocation: new AgentInvocation(
+            agent: $definition->agents->findByName(name: 'assistant'),
+            provider: $definition->providers->findByName(name: 'openai'),
+            model: 'test-model',
+            prompt: 'Use a tool.',
+            providerConfig: [ 'driver' => 'openai' ],
+            inputs: [],
+            secrets: [],
+            agentOutputs: [],
+            tools: [
+                new BoundToolDefinition(
+                    definition: $definition->toolDefinitionNamed(toolName: 'bound_schema_tool'),
+                    bounded: [ 'tenant_id' => 'tenant-123' ],
+                ),
+            ],
+        ));
+
+        $tools = $provider->prompt->agent->tools();
+
+        $this->assertCount(expectedCount: 1, haystack: $tools);
+        $this->assertInstanceOf(expected: LaravelAiTool::class, actual: $tools[ 0 ]);
     }
 
     private function invocation(string $prompt, string $model, array $providerConfig, ?string $wire = null): AgentInvocation
@@ -149,6 +203,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             inputs: [],
             secrets: [],
             agentOutputs: [],
+            tools: [],
         );
     }
 

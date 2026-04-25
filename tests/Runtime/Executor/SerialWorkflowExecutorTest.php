@@ -177,6 +177,43 @@ final class SerialWorkflowExecutorTest extends TestCase
         );
     }
 
+    public function test_it_resolves_agent_tool_bindings_into_invocations(): void
+    {
+        $runner = FakeAgentRunner::fake([
+            'assistant' => function (AgentInvocation $invocation): array {
+
+                $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
+
+                $this->assertSame(
+                    expected: 'bound_schema_tool',
+                    actual: $invocation->tools[ 0 ]->definition->name,
+                );
+
+                $this->assertSame(
+                    expected: [ 'tenant_id' => 'tenant-123' ],
+                    actual: $invocation->tools[ 0 ]->bounded,
+                );
+
+                $this->assertSame(
+                    expected: [],
+                    actual: $invocation->tools[ 1 ]->bounded,
+                );
+
+                return [ 'weather' => 'sunny' ];
+
+            },
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $this->assertSame(
+            expected: [ 'weather' => 'sunny' ],
+            actual: $executor->execute(
+                definition: $this->workflowDefinition(fixture: 'tool_schema_retry.wire'),
+            ),
+        );
+    }
+
     private function workflowDefinition(string $fixture): WorkflowDefinition
     {
         return app(WorkflowCompiler::class)->compile(
@@ -226,6 +263,7 @@ final class SerialWorkflowExecutorTest extends TestCase
                 'additionalProperties' => false,
             ],
         ];
+
         $payload[ 'agents' ][ 0 ][ 'model' ] = [ '$ref' => 'input.model' ];
 
         return WorkflowDefinition::fromArray(payload: $payload);

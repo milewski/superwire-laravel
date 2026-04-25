@@ -9,12 +9,6 @@ use Superwire\Laravel\Data\Agent\Provider;
 
 final readonly class AgentInvocation
 {
-    /**
-     * @param array<string, mixed> $inputs
-     * @param array<string, mixed> $secrets
-     * @param array<string, mixed> $agentOutputs
-     * @param array<string, mixed> $providerConfig
-     */
     public function __construct(
         public Agent $agent,
         public Provider $provider,
@@ -24,6 +18,7 @@ final readonly class AgentInvocation
         public array $inputs,
         public array $secrets,
         public array $agentOutputs,
+        public array $tools,
         public ?string $iterationIdentifier = null,
         public mixed $iterationValue = null,
     )

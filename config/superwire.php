@@ -17,4 +17,8 @@ return [
     'ai' => [
         'providers' => [],
     ],
+
+    'tools' => [
+        'internal_token' => env('SUPERWIRE_INTERNAL_TOOL_TOKEN'),
+    ],
 ];

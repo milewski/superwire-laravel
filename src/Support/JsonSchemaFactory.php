@@ -15,7 +15,7 @@ final class JsonSchemaFactory
     {
         try {
             /** @var Schema $schema */
-            $schema = Schema::import(self::toObject($definition));
+            $schema = Schema::import(self::toObject(self::normalizeDefinition(value: $definition)));
 
             return $schema;
         } catch (Throwable $exception) {
@@ -54,5 +54,27 @@ final class JsonSchemaFactory
         $json = json_encode($value, JSON_THROW_ON_ERROR);
 
         return json_decode($json, false, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private static function normalizeDefinition(mixed $value, ?string $key = null): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $normalized = [];
+
+        foreach ($value as $childKey => $childValue) {
+            $normalized[ $childKey ] = self::normalizeDefinition(
+                value: $childValue,
+                key: is_string($childKey) ? $childKey : null,
+            );
+        }
+
+        if ($key === 'properties' && $normalized === []) {
+            return (object) [];
+        }
+
+        return $normalized;
     }
 }
