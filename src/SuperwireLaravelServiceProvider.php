@@ -5,40 +5,39 @@ declare(strict_types = 1);
 namespace Superwire\Laravel;
 
 use Illuminate\Support\ServiceProvider;
+use Superwire\Laravel\Console\CompileWorkflowCommand;
+use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Contracts\WorkflowExecutor;
+use Superwire\Laravel\Runtime\CliWorkflowCompiler;
+use Superwire\Laravel\Runtime\MissingAgentRunner;
+use Superwire\Laravel\Runtime\SerialWorkflowExecutor;
 
 final class SuperwireLaravelServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../config/superwire.php', 'superwire');
+        $this->mergeConfigFrom(__DIR__.'/../config/superwire.php', 'superwire');
 
-        $this->app->singleton(WorkflowExecutor::class, function (): WorkflowExecutor {
+        $this->app->bind(AgentRunner::class, MissingAgentRunner::class);
 
-            $configuredCliPath = (string) config('superwire.cli.path', '');
-
-            if ($configuredCliPath === '') {
-                $configuredCliPath = (string) config('superwire.cli.binary', '');
-            }
-
-            return new WorkflowExecutor($configuredCliPath);
-
+        $this->app->bind(WorkflowCompiler::class, function (): WorkflowCompiler {
+            return new CliWorkflowCompiler((string) config('superwire.cli.path'));
         });
 
-        $this->app->singleton(WorkflowCompiler::class, function (): WorkflowCompiler {
-            return new WorkflowCompiler($this->app->make(WorkflowExecutor::class));
-        });
-
-        config()->set(
-            'ai.providers',
-            array_replace_recursive(
-                config('ai.providers', []),
-                config('superwire.ai.providers', []),
-            ),
-        );
+        $this->app->bind(WorkflowExecutor::class, SerialWorkflowExecutor::class);
     }
 
     public function boot(): void
     {
-        $this->publishes([ __DIR__ . '/../config/superwire.php' => config_path('superwire.php') ], 'superwire-config');
+        $this->publishes([
+            __DIR__.'/../config/superwire.php' => config_path('superwire.php'),
+        ], 'superwire-config');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                CompileWorkflowCommand::class,
+            ]);
+        }
     }
 }

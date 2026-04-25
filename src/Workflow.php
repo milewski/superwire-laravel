@@ -4,88 +4,76 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel;
 
+use InvalidArgumentException;
+use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
-use Superwire\Laravel\Tools\WorkflowTool;
 
-final readonly class Workflow
+final class Workflow
 {
-    /**
-     * @param array<string, mixed> $inputValues
-     * @param array<string, mixed> $secretValues
-     * @param array<int, string|WorkflowTool> $tools
-     */
     private function __construct(
-        private ?string $workflowPath = null,
-        private ?WorkflowDefinition $workflowDefinition = null,
-        private array $inputValues = [],
-        private array $secretValues = [],
-        private array $tools = [],
-        private ?string $outputClass = null,
+        private readonly WorkflowDefinition $definition,
+        private array $inputs = [],
+        private array $secrets = [],
     )
     {
     }
 
-    public static function fromFile(string $workflowPath): self
+    public static function fromDefinition(WorkflowDefinition $definition): self
     {
-        return new self(workflowPath: $workflowPath);
+        return new self($definition);
     }
 
-    public static function fromSource(string $workflowSource, ?string $workflowPath = null): self
+    public static function fromArray(array $payload): self
     {
-        return new self(
-            workflowPath: $workflowPath,
-            workflowDefinition: app(WorkflowCompiler::class)->compileSource($workflowSource, $workflowPath),
+        return new self(WorkflowDefinition::fromArray($payload));
+    }
+
+    public static function fromJson(string $json): self
+    {
+        return new self(WorkflowDefinition::fromJson($json));
+    }
+
+    public static function fromFile(string $path): self
+    {
+        if (!is_file($path)) {
+            throw new InvalidArgumentException(sprintf('Workflow file `%s` does not exist.', $path));
+        }
+
+        if (str_ends_with($path, '.wire')) {
+            return new self(app(WorkflowCompiler::class)->compile($path));
+        }
+
+        return self::fromJson((string) file_get_contents($path));
+    }
+
+    public function withInputs(array $inputs): self
+    {
+        $workflow = clone $this;
+        $workflow->inputs = $inputs;
+
+        return $workflow;
+    }
+
+    public function withSecrets(array $secrets): self
+    {
+        $workflow = clone $this;
+        $workflow->secrets = $secrets;
+
+        return $workflow;
+    }
+
+    public function run(): array
+    {
+        return app(WorkflowExecutor::class)->execute(
+            definition: $this->definition,
+            inputs: $this->inputs,
+            secrets: $this->secrets,
         );
-    }
-
-    /**
-     * @param array<string, mixed> $inputValues
-     */
-    public function withInputs(array $inputValues): self
-    {
-        return new self($this->workflowPath, $this->workflowDefinition, $inputValues, $this->secretValues, $this->tools, $this->outputClass);
-    }
-
-    /**
-     * @param array<string, mixed> $secretValues
-     */
-    public function withSecrets(array $secretValues): self
-    {
-        return new self($this->workflowPath, $this->workflowDefinition, $this->inputValues, $secretValues, $this->tools, $this->outputClass);
-    }
-
-    /**
-     * @param array<int, string|WorkflowTool> $tools
-     */
-    public function withTools(array $tools): self
-    {
-        return new self($this->workflowPath, $this->workflowDefinition, $this->inputValues, $this->secretValues, $tools, $this->outputClass);
-    }
-
-    /**
-     * @param class-string $outputClass
-     */
-    public function mapInto(string $outputClass): self
-    {
-        return new self($this->workflowPath, $this->workflowDefinition, $this->inputValues, $this->secretValues, $this->tools, $outputClass);
     }
 
     public function definition(): WorkflowDefinition
     {
-        return $this->workflowDefinition ?? app(WorkflowCompiler::class)->compile((string) $this->workflowPath);
-    }
-
-    public function runtime(): Runtime
-    {
-        return (new Runtime($this->definition()))
-            ->withInputs($this->inputValues)
-            ->withSecrets($this->secretValues)
-            ->withTools($this->tools)
-            ->mapInto($this->outputClass);
-    }
-
-    public function run(): WorkflowExecutionResult
-    {
-        return $this->runtime()->run();
+        return $this->definition;
     }
 }

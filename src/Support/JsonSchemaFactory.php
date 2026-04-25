@@ -5,35 +5,32 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Support;
 
 use InvalidArgumentException;
-use JsonException;
-use stdClass;
-use Swaggest\JsonSchema\InvalidValue;
+use Swaggest\JsonSchema\Exception\InvalidValue;
 use Swaggest\JsonSchema\Schema;
 use Throwable;
 
 final class JsonSchemaFactory
 {
-    private const JSON_SCHEMA_OBJECT_KEYS = [
-        '$defs',
-        'definitions',
-        'dependentSchemas',
-        'patternProperties',
-        'properties',
-    ];
-
-    /**
-     * @param array<string, mixed> $definition
-     */
     public static function fromArray(array $definition, string $name): Schema
     {
         try {
+            /** @var Schema $schema */
+            $schema = Schema::import(self::toObject($definition));
 
-            return Schema::import(self::schemaToObject($definition));
+            return $schema;
+        } catch (Throwable $exception) {
+            throw new InvalidArgumentException(sprintf('Invalid JSON schema for %s: %s', $name, $exception->getMessage()), previous: $exception);
+        }
+    }
 
-        } catch (Throwable $throwable) {
-
-            throw new InvalidArgumentException(sprintf('Invalid json schema for %s.', $name), previous: $throwable);
-
+    public static function validate(Schema $schema, mixed $value, string $name): void
+    {
+        try {
+            $schema->in(self::toObject($value));
+        } catch (InvalidValue $exception) {
+            throw new InvalidArgumentException(sprintf('Invalid %s: %s', $name, $exception->getMessage()), previous: $exception);
+        } catch (Throwable $exception) {
+            throw new InvalidArgumentException(sprintf('Invalid %s: %s', $name, $exception->getMessage()), previous: $exception);
         }
     }
 
@@ -42,78 +39,20 @@ final class JsonSchemaFactory
      */
     public static function toArray(Schema $schema): array
     {
-        try {
+        $json = json_encode($schema, JSON_THROW_ON_ERROR);
+        $array = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
-            $encodedSchema = json_encode($schema, JSON_THROW_ON_ERROR);
-
-            return json_decode($encodedSchema, true, flags: JSON_THROW_ON_ERROR);
-
-        } catch (JsonException $jsonException) {
-
-            throw new InvalidArgumentException('Unable to serialize json schema.', previous: $jsonException);
-
+        if (!is_array($array)) {
+            throw new InvalidArgumentException('schema must encode to an array');
         }
+
+        return $array;
     }
 
-    /**
-     * @param array<string, mixed> $values
-     */
-    public static function validate(Schema $schema, array $values, string $name): void
+    private static function toObject(mixed $value): mixed
     {
-        try {
+        $json = json_encode($value, JSON_THROW_ON_ERROR);
 
-            $schema->in(self::payloadToObject($values, forceObject: true));
-
-        } catch (InvalidValue $invalidValue) {
-
-            throw new InvalidArgumentException(sprintf('%s is invalid: %s', $name, $invalidValue->getMessage()), previous: $invalidValue);
-
-        } catch (Throwable $throwable) {
-
-            throw new InvalidArgumentException(sprintf('Unable to validate %s.', $name), previous: $throwable);
-
-        }
-    }
-
-    private static function schemaToObject(mixed $value, ?string $key = null): mixed
-    {
-        if (!is_array($value)) {
-            return $value;
-        }
-
-        if ($value === [] && in_array($key, self::JSON_SCHEMA_OBJECT_KEYS, true)) {
-            return new stdClass();
-        }
-
-        if (array_is_list($value)) {
-            return array_map(static fn (mixed $nestedValue): mixed => self::schemaToObject($nestedValue), $value);
-        }
-
-        $objectValue = new stdClass();
-
-        foreach ($value as $key => $nestedValue) {
-            $objectValue->{$key} = self::schemaToObject($nestedValue, (string) $key);
-        }
-
-        return $objectValue;
-    }
-
-    private static function payloadToObject(mixed $value, bool $forceObject = false): mixed
-    {
-        if (!is_array($value)) {
-            return $value;
-        }
-
-        if (!$forceObject && array_is_list($value)) {
-            return array_map(static fn (mixed $nestedValue): mixed => self::payloadToObject($nestedValue), $value);
-        }
-
-        $objectValue = new stdClass();
-
-        foreach ($value as $key => $nestedValue) {
-            $objectValue->{$key} = self::payloadToObject($nestedValue);
-        }
-
-        return $objectValue;
+        return json_decode($json, false, flags: JSON_THROW_ON_ERROR);
     }
 }
