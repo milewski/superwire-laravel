@@ -4,12 +4,13 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Runtime;
 
+use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
 use RuntimeException;
-use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Contracts\WorkflowCompiler as WorkflowCompilerInterface;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 
-final readonly class CliWorkflowCompiler implements WorkflowCompiler
+final readonly class WorkflowCompiler implements WorkflowCompilerInterface
 {
     public function __construct(
         private string $binaryPath,
@@ -35,29 +36,19 @@ final readonly class CliWorkflowCompiler implements WorkflowCompiler
             $workflowPath,
         ];
 
-        $descriptorSpec = [
-            1 => [ 'pipe', 'w' ],
-            2 => [ 'pipe', 'w' ],
-        ];
+        $result = Process::run($command);
 
-        $process = proc_open($command, $descriptorSpec, $pipes);
+        if ($result->failed()) {
 
-        if (!is_resource($process)) {
-            throw new RuntimeException('Unable to start the Superwire CLI process.');
+            throw new RuntimeException(
+                trim($result->errorOutput()) !== '' ? trim($result->errorOutput()) : sprintf('Superwire CLI exited with status %d.', $result->exitCode()),
+            );
+
         }
 
-        $output = stream_get_contents($pipes[ 1 ]);
-        $errors = stream_get_contents($pipes[ 2 ]);
-        fclose($pipes[ 1 ]);
-        fclose($pipes[ 2 ]);
+        $output = $result->output();
 
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
-            throw new RuntimeException(trim($errors) !== '' ? trim($errors) : sprintf('Superwire CLI exited with status %d.', $exitCode));
-        }
-
-        if (!is_string($output) || trim($output) === '') {
+        if (trim($output) === '') {
             throw new RuntimeException('Superwire CLI returned an empty JSON payload.');
         }
 

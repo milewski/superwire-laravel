@@ -7,11 +7,11 @@ namespace Superwire\Laravel;
 use Illuminate\Support\ServiceProvider;
 use Superwire\Laravel\Console\CompileWorkflowCommand;
 use Superwire\Laravel\Contracts\AgentRunner;
-use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Contracts\WorkflowCompiler as WorkflowCompilerInterface;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
-use Superwire\Laravel\Runtime\CliWorkflowCompiler;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
 use Superwire\Laravel\Runtime\MissingAgentRunner;
+use Superwire\Laravel\Runtime\WorkflowCompiler;
 
 final class SuperwireLaravelServiceProvider extends ServiceProvider
 {
@@ -21,8 +21,8 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
 
         $this->app->bind(AgentRunner::class, MissingAgentRunner::class);
 
-        $this->app->bind(WorkflowCompiler::class, function (): WorkflowCompiler {
-            return new CliWorkflowCompiler((string) config('superwire.cli.path'));
+        $this->app->bind(WorkflowCompilerInterface::class, function (): WorkflowCompilerInterface {
+            return new WorkflowCompiler((string) config('superwire.cli.path'));
         });
 
         $this->app->bind(WorkflowExecutor::class, SerialWorkflowExecutor::class);
