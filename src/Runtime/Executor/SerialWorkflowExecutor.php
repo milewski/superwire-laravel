@@ -172,7 +172,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    private function normalize(mixed $value): mixed
+    private function normalize(array | string | object $value): array | string
     {
         if (is_object($value)) {
             return json_decode(json_encode($value, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);

@@ -26,7 +26,7 @@ final class FakeAgentRunner implements AgentRunner
         return $runner;
     }
 
-    public function run(AgentInvocation $invocation): mixed
+    public function run(AgentInvocation $invocation): array | string | object
     {
         $this->invocations[] = $invocation;
 
