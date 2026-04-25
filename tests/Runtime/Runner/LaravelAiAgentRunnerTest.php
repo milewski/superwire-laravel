@@ -51,6 +51,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 providerConfig: [
                     'driver' => 'openai',
                     'api_key' => 'test-key',
+                    'endpoint' => 'http://example.test/v1',
                 ],
             ),
         );
@@ -60,6 +61,10 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertSame('Write a short welcome message.', actual: $provider->prompt->prompt);
         $this->assertSame('test-model', actual: $provider->prompt->model);
         $this->assertSame('openai', actual: $this->app[ 'config' ]->get('ai.providers.openai.driver'));
+        $this->assertSame('test-key', actual: $this->app[ 'config' ]->get('ai.providers.openai.key'));
+        $this->assertSame('http://example.test/v1', actual: $this->app[ 'config' ]->get('ai.providers.openai.url'));
+        $this->assertNull(actual: $this->app[ 'config' ]->get('ai.providers.openai.api_key'));
+        $this->assertNull(actual: $this->app[ 'config' ]->get('ai.providers.openai.endpoint'));
         $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
         $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
     }

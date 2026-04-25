@@ -170,9 +170,26 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
     {
         $this->config->set(
             key: 'ai.providers.' . $invocation->provider->name,
-            value: $invocation->providerConfig,
+            value: $this->providerConfig(invocation: $invocation),
         );
 
         $this->ai->purge(name: $invocation->provider->name);
+    }
+
+    private function providerConfig(AgentInvocation $invocation): array
+    {
+        $config = $invocation->providerConfig;
+
+        if (array_key_exists('api_key', $config) && !array_key_exists('key', $config)) {
+            $config[ 'key' ] = $config[ 'api_key' ];
+        }
+
+        if (array_key_exists('endpoint', $config) && !array_key_exists('url', $config)) {
+            $config[ 'url' ] = $config[ 'endpoint' ];
+        }
+
+        unset($config[ 'api_key' ], $config[ 'endpoint' ]);
+
+        return $config;
     }
 }
