@@ -46,7 +46,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             config: $this->app[ 'config' ],
         );
 
-        $output = $runner->run(
+        $result = $runner->run(
             invocation: $this->invocation(
                 prompt: 'Write a short welcome message.',
                 model: 'test-model',
@@ -58,7 +58,9 @@ final class LaravelAiAgentRunnerTest extends TestCase
             ),
         );
 
-        $this->assertSame('Welcome aboard.', actual: $output);
+        $this->assertSame('Welcome aboard.', actual: $result->output);
+        $this->assertSame(expected: 'user', actual: $result->history[ 0 ][ 'role' ]);
+        $this->assertSame(expected: 'assistant', actual: $result->history[ 1 ][ 'role' ]);
         $this->assertSame('openai', actual: $ai->providerName);
         $this->assertSame('Write a short welcome message.', actual: $provider->prompt->prompt);
         $this->assertSame('test-model', actual: $provider->prompt->model);
@@ -91,7 +93,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             config: $this->app[ 'config' ],
         );
 
-        $output = $runner->run(
+        $result = $runner->run(
             invocation: $this->invocation(
                 prompt: 'Summarize Superwire.',
                 model: 'test-model',
@@ -105,7 +107,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 'summary' => 'Superwire summary',
                 'tagline' => 'Ship it',
             ],
-            actual: $output,
+            actual: $result->output,
         );
 
         $this->assertInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
@@ -139,7 +141,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             config: $this->app[ 'config' ],
         );
 
-        $output = $runner->run(
+        $result = $runner->run(
             invocation: $this->invocation(
                 prompt: 'Write a short welcome message.',
                 model: 'test-model',
@@ -150,7 +152,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
 
         $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
         $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
-        $this->assertSame(expected: '42', actual: $output);
+        $this->assertSame(expected: '42', actual: $result->output);
     }
 
     public function test_it_exposes_bound_tools_to_laravel_ai_agent(): void

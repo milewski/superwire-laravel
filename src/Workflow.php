@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
-use Superwire\Laravel\Tools\AbstractTool;
+use Superwire\Laravel\Runtime\WorkflowResult;
 
 final class Workflow
 {
@@ -91,7 +91,7 @@ final class Workflow
         return $workflow;
     }
 
-    public function run(): array
+    public function run(): WorkflowResult
     {
         return app(WorkflowExecutor::class)->execute(
             definition: $this->definition,

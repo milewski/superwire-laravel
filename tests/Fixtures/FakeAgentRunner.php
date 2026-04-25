@@ -6,6 +6,7 @@ namespace Superwire\Laravel\Tests\Fixtures;
 
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\AgentRunResult;
 
 class FakeAgentRunner implements AgentRunner
 {
@@ -26,17 +27,29 @@ class FakeAgentRunner implements AgentRunner
         return $runner;
     }
 
-    public function run(AgentInvocation $invocation): array | string
+    public function run(AgentInvocation $invocation): AgentRunResult
     {
         $this->invocations[] = $invocation;
 
         $response = $this->responses[ $invocation->agent->name ] ?? $invocation->agent->name;
 
         if (is_callable($response)) {
-            return $response($invocation);
+            $response = $response($invocation);
         }
 
-        return $response;
+        return new AgentRunResult(
+            output: $response,
+            history: [
+                [
+                    'role' => 'user',
+                    'content' => $invocation->prompt,
+                ],
+                [
+                    'role' => 'assistant',
+                    'content' => is_string($response) ? $response : json_encode($response, JSON_UNESCAPED_SLASHES),
+                ],
+            ],
+        );
     }
 
     public function invocation(int $index): AgentInvocation

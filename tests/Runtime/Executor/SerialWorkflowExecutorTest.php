@@ -27,11 +27,13 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'parallel_batch.wire'),
         );
 
-        $this->assertSame([ 'review' => 'Combine customer and investor.' ], $output);
+        $this->assertSame([ 'review' => 'Combine customer and investor.' ], $result->output);
+        $this->assertSame(expected: 'user', actual: $result->history[ 0 ][ 'role' ]);
+        $this->assertSame(expected: 'customer_story', actual: $result->history[ 0 ][ 'agent' ]);
         $this->assertSame([ 'customer_story', 'investor_story', 'review' ], $runner->agentNames());
         $this->assertSame([ 'customer_story' => 'customer', 'investor_story' => 'investor' ], $runner->invocation(2)->agentOutputs);
     }
@@ -45,7 +47,7 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'simple_loop.wire'),
             secrets: [
                 'api_key' => 'test-key',
@@ -54,7 +56,7 @@ final class SerialWorkflowExecutorTest extends TestCase
             ],
         );
 
-        $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $output);
+        $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $result->output);
         $this->assertSame('test-model', $runner->invocation(0)->model);
         $this->assertSame('http://example.test/v1', $runner->invocation(0)->providerConfig[ 'endpoint' ]);
         $this->assertSame('Please spell out the number: 1 in lowercase.', $runner->invocation(1)->prompt);
@@ -76,7 +78,7 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'interpolation_chain.wire'),
             inputs: [
                 'product_name' => 'Superwire',
@@ -89,7 +91,7 @@ final class SerialWorkflowExecutorTest extends TestCase
                 'body' => 'Write a launch note for developers about Summarize Superwire for developers. with tagline Ship it.',
                 'summary' => 'Summarize Superwire for developers.',
             ],
-            actual: $output,
+            actual: $result->output,
         );
     }
 
@@ -162,11 +164,11 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'example.wire'),
         );
 
-        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three', 'four', 'five' ] ], actual: $output);
+        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three', 'four', 'five' ] ], actual: $result->output);
         $this->assertSame(expected: [ 'lister', 'lister', 'counter', 'counter', 'counter', 'counter', 'counter' ], actual: $runner->agentNames());
         $this->assertStringContainsString(needle: 'Validation error: Agent `lister` returned output that cannot be parsed as an object.', haystack: $runner->invocation(1)->prompt);
         $this->assertStringContainsString(needle: 'Previous response: []', haystack: $runner->invocation(1)->prompt);
@@ -268,7 +270,7 @@ final class SerialWorkflowExecutorTest extends TestCase
             actual: $executor->execute(
                 definition: $this->workflowDefinition(fixture: 'tool_schema_retry.wire'),
                 tools: [ new BoundSchemaTool(), new RetryWeatherTool() ],
-            ),
+            )->output,
         );
     }
 
@@ -283,11 +285,12 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'greeting.wire'),
         );
 
-        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $output);
+        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $result->output);
+        $this->assertSame(expected: 'stream response', actual: $result->history[ 1 ][ 'content' ]);
         $this->assertSame(expected: 'greeting', actual: $runner->streamInvocation?->agent->name);
         $this->assertSame(expected: [], actual: $runner->agentNames());
     }
@@ -303,12 +306,12 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor = new SerialWorkflowExecutor($runner);
 
-        $output = $executor->execute(
+        $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'greeting.wire'),
             agentMode: 'request',
         );
 
-        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $output);
+        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $result->output);
         $this->assertNull(actual: $runner->streamInvocation);
     }
 

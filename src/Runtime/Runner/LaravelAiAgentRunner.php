@@ -19,6 +19,7 @@ use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\AgentRunResult;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
 
@@ -31,18 +32,20 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
     {
     }
 
-    public function run(AgentInvocation $invocation): array | string
+    public function run(AgentInvocation $invocation): AgentRunResult
     {
         $this->configureProvider(invocation: $invocation);
 
         $provider = $this->ai->textProvider(name: $invocation->provider->name);
         $response = $provider->prompt($this->prompt(invocation: $invocation, provider: $provider));
+        $output = $response instanceof StructuredAgentResponse
+            ? $response->structured
+            : $response->text;
 
-        if ($response instanceof StructuredAgentResponse) {
-            return $response->structured;
-        }
-
-        return $response->text;
+        return new AgentRunResult(
+            output: $output,
+            history: $this->responseHistory(invocation: $invocation, response: $response, output: $output),
+        );
     }
 
     public function runStream(AgentInvocation $invocation): StreamableAgentResponse
@@ -94,6 +97,89 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
             callback: fn (BoundToolDefinition $tool) => new LaravelAiTool($tool),
             array: $invocation->tools,
         );
+    }
+
+    private function responseHistory(AgentInvocation $invocation, mixed $response, array | string $output): array
+    {
+        $history = [[
+            'role' => 'user',
+            'content' => $invocation->prompt,
+        ]];
+
+        foreach ($response->steps as $step) {
+
+            $history[] = [
+                'role' => 'assistant',
+                'content' => $step->text,
+                'tool_calls' => $this->arrayValues($step->toolCalls),
+                'tool_results' => $this->arrayValues($step->toolResults),
+                'finish_reason' => $step->finishReason->value,
+                'usage' => $this->arrayValue($step->usage),
+                'meta' => $this->arrayValue($step->meta),
+            ];
+
+        }
+
+        if ($history === [[ 'role' => 'user', 'content' => $invocation->prompt ]]) {
+
+            foreach ($response->messages as $message) {
+                $history[] = $this->messageHistoryEntry(message: $message);
+            }
+
+        }
+
+        if (count($history) === 1) {
+
+            $history[] = [
+                'role' => 'assistant',
+                'content' => is_string($output) ? $output : json_encode($output, JSON_UNESCAPED_SLASHES),
+                'tool_calls' => $this->arrayValues($response->toolCalls),
+                'tool_results' => $this->arrayValues($response->toolResults),
+                'usage' => $this->arrayValue($response->usage),
+                'meta' => $this->arrayValue($response->meta),
+            ];
+
+        }
+
+        return $history;
+    }
+
+    private function messageHistoryEntry(mixed $message): array
+    {
+        $entry = [
+            'role' => $message->role->value,
+            'content' => $message->content,
+        ];
+
+        if (property_exists($message, 'toolCalls')) {
+            $entry[ 'tool_calls' ] = $this->arrayValues($message->toolCalls);
+        }
+
+        if (property_exists($message, 'toolResults')) {
+            $entry[ 'tool_results' ] = $this->arrayValues($message->toolResults);
+        }
+
+        return $entry;
+    }
+
+    private function arrayValues(iterable $values): array
+    {
+        $items = [];
+
+        foreach ($values as $value) {
+            $items[] = $this->arrayValue($value);
+        }
+
+        return $items;
+    }
+
+    private function arrayValue(mixed $value): mixed
+    {
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            return $value->toArray();
+        }
+
+        return $value;
     }
 
     private function schemaFields(array $fields, JsonSchemaTypeFactory $schema): array
