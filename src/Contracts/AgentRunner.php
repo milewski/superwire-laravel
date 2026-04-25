@@ -8,5 +8,5 @@ use Superwire\Laravel\Runtime\AgentInvocation;
 
 interface AgentRunner
 {
-    public function run(AgentInvocation $invocation): array | string | object;
+    public function run(AgentInvocation $invocation): array | string;
 }

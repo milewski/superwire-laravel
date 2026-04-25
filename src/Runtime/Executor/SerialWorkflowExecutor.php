@@ -11,6 +11,7 @@ use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Agent\OutputFieldReference;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
 use Superwire\Laravel\Support\JsonSchemaFactory;
@@ -20,6 +21,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
     public function __construct(
         private AgentRunner $agentRunner,
         private PromptRenderer $promptRenderer = new PromptRenderer(),
+        private OutputParser $outputParser = new OutputParser(),
     )
     {
     }
@@ -84,7 +86,11 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             iterationValue: $iterationValue,
         ));
 
-        return $this->normalize($output);
+        return $this->outputParser->parse(
+            output: $output,
+            field: $agent->runsForEach() ? $agent->output->iteration : $agent->output->finalOutput,
+            agent: $agent,
+        );
     }
 
     private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs): array
@@ -185,12 +191,4 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $model;
     }
 
-    private function normalize(array | string | object $value): array | string
-    {
-        if (is_object($value)) {
-            return json_decode(json_encode($value, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
-        }
-
-        return $value;
-    }
 }

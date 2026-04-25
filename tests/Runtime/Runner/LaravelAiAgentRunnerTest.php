@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Runtime\Runner;
 
 use Laravel\Ai\AiManager;
+use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Contracts\Gateway\TextGateway;
 use Laravel\Ai\Contracts\Providers\TextProvider;
 use Laravel\Ai\Prompts\AgentPrompt;
@@ -13,6 +14,7 @@ use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StreamableAgentResponse;
 use Laravel\Ai\Responses\StructuredAgentResponse;
+use Laravel\Ai\StructuredAnonymousAgent;
 use RuntimeException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Runtime\AgentInvocation;
@@ -51,9 +53,11 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertSame('Write a short welcome message.', actual: $provider->prompt->prompt);
         $this->assertSame('test-model', actual: $provider->prompt->model);
         $this->assertSame('openai', actual: $this->app[ 'config' ]->get('ai.providers.openai.driver'));
+        $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
+        $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
     }
 
-    public function test_it_returns_structured_laravel_ai_responses_as_arrays(): void
+    public function test_it_uses_structured_agent_for_object_outputs(): void
     {
         $provider = new RecordingTextProvider(
             response: new StructuredAgentResponse(
@@ -62,7 +66,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
                     'summary' => 'Superwire summary',
                     'tagline' => 'Ship it',
                 ],
-                text: '{"summary":"Superwire summary","tagline":"Ship it"}',
+                text: json_encode([ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ]),
                 usage: new Usage(),
                 meta: new Meta(),
             ),
@@ -78,6 +82,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 prompt: 'Summarize Superwire.',
                 model: 'test-model',
                 providerConfig: [ 'driver' => 'openai' ],
+                wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
             ),
         );
 
@@ -88,13 +93,52 @@ final class LaravelAiAgentRunnerTest extends TestCase
             ],
             actual: $output,
         );
+
+        $this->assertInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
     }
 
-    private function invocation(string $prompt, string $model, array $providerConfig): AgentInvocation
+    public function test_it_returns_raw_text_for_non_object_outputs(): void
     {
-        $definition = $this->app->make(WorkflowCompiler::class)->compile(
-            workflowPath: __DIR__ . '/../../Stubs/greeting.wire',
+        $provider = new RecordingTextProvider(
+            response: new AgentResponse(
+                invocationId: 'invocation-1',
+                text: '42',
+                usage: new Usage(),
+                meta: new Meta(),
+            ),
         );
+
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: $provider),
+            config: $this->app[ 'config' ],
+        );
+
+        $output = $runner->run(
+            invocation: $this->invocation(
+                prompt: 'Write a short welcome message.',
+                model: 'test-model',
+                providerConfig: [ 'driver' => 'openai' ],
+                wire: $this->wireWithOutput(output: 'number'),
+            ),
+        );
+
+        $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
+        $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
+        $this->assertSame(expected: '42', actual: $output);
+    }
+
+    private function invocation(string $prompt, string $model, array $providerConfig, ?string $wire = null): AgentInvocation
+    {
+        $workflowPath = $this->writeTemporaryWorkflow(
+            wire: $wire ?? $this->wireWithOutput(output: 'string'),
+            prefix: 'superwire-ai-runner-',
+        );
+
+        try {
+            $definition = app(WorkflowCompiler::class)->compile(workflowPath: $workflowPath);
+        } finally {
+            unlink(filename: $workflowPath);
+        }
 
         return new AgentInvocation(
             agent: $definition->agents->findByName(name: 'greeting'),
@@ -107,6 +151,29 @@ final class LaravelAiAgentRunnerTest extends TestCase
             agentOutputs: [],
         );
     }
+
+    private function wireWithOutput(string $output): string
+    {
+        return <<<WIRE
+            provider openai {
+                driver: "openai"
+                endpoint: "http://example.test/v1"
+                api_key: "test-key"
+                models: ["test-model"]
+            }
+            
+            agent greeting {
+                model: openai("test-model")
+                prompt: "Write a short welcome message."
+                output: $output
+            }
+            
+            output {
+                greeting: agent.greeting
+            }
+        WIRE;
+    }
+
 }
 
 final class RecordingAiManager extends AiManager

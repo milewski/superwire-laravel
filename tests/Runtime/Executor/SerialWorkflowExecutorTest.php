@@ -59,14 +59,14 @@ final class SerialWorkflowExecutorTest extends TestCase
         $this->assertSame(1, $runner->invocation(1)->iterationValue);
     }
 
-    public function test_it_normalizes_object_agent_output_before_schema_validation_and_reference_resolution(): void
+    public function test_it_uses_array_agent_output_for_schema_validation_and_reference_resolution(): void
     {
         $runner = FakeAgentRunner::fake([
-            'release_summary' => fn (AgentInvocation $invocation): object => (object) [
+            'release_summary' => fn (AgentInvocation $invocation): array => [
                 'summary' => $invocation->prompt,
                 'tagline' => 'Ship it',
             ],
-            'launch_message' => fn (AgentInvocation $invocation): object => (object) [
+            'launch_message' => fn (AgentInvocation $invocation): array => [
                 'body' => $invocation->prompt,
             ],
         ]);
@@ -130,7 +130,7 @@ final class SerialWorkflowExecutorTest extends TestCase
         $executor = new SerialWorkflowExecutor($runner);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('agent `greeting` output');
+        $this->expectExceptionMessage('Agent `greeting` returned output that cannot be parsed as a string.');
 
         $executor->execute(
             definition: $this->workflowDefinition(fixture: 'greeting.wire'),
