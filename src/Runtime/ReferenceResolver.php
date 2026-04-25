@@ -48,6 +48,7 @@ final readonly class ReferenceResolver
     private function readPath(mixed $value, array $segments, string $reference): mixed
     {
         foreach ($segments as $segment) {
+
             if (is_array($value) && array_key_exists($segment, $value)) {
                 $value = $value[ $segment ];
 
@@ -61,6 +62,7 @@ final readonly class ReferenceResolver
             }
 
             throw new InvalidArgumentException(sprintf('Unable to resolve workflow reference `%s`.', $reference));
+
         }
 
         return $value;

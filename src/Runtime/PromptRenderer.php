@@ -17,14 +17,18 @@ final class PromptRenderer
         $rendered = '';
 
         foreach ($prompt->templateParts as $part) {
+
             if ($part->isText()) {
+
                 $rendered .= $part->text;
 
                 continue;
+
             }
 
             $value = $resolver->resolve($part->expression->reference);
             $rendered .= is_scalar($value) || $value === null ? (string) $value : json_encode($value, JSON_THROW_ON_ERROR);
+
         }
 
         return $rendered;

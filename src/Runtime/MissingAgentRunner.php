@@ -11,6 +11,6 @@ final class MissingAgentRunner implements AgentRunner
 {
     public function run(AgentInvocation $invocation): mixed
     {
-        throw new LogicException('No Superwire agent runner is configured. Bind '.AgentRunner::class.' to execute workflow agents.');
+        throw new LogicException('No Superwire agent runner is configured. Bind ' . AgentRunner::class . ' to execute workflow agents.');
     }
 }
