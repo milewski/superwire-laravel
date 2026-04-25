@@ -2,13 +2,11 @@
 
 declare(strict_types = 1);
 
-namespace Superwire\Laravel\Runtime\Runner;
+namespace Superwire\Laravel\Runtime\Runner\Agent\Concerns;
 
-use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Enums\Lab;
-use Laravel\Ai\StructuredAnonymousAgent;
 
-final class SuperwireStructuredAnonymousAgent extends StructuredAnonymousAgent implements HasProviderOptions
+trait ProvidesSuperwireProviderOptions
 {
     public function providerOptions(Lab | string $provider): array
     {

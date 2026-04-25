@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
+use Spatie\Fork\Fork;
 use TypeError;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
@@ -211,14 +212,14 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             throw new InvalidArgumentException(sprintf('Agent `%s` for_each reference must resolve to an iterable.', $agent->name));
         }
 
-        $outputs = [];
-        $history = [];
+        $items = is_array($iterable) ? array_values($iterable) : iterator_to_array($iterable, false);
 
-        foreach ($iterable as $item) {
+        if (count($items) > 1 && function_exists('pcntl_fork')) {
 
-            $result = $this->runAgent(
+            return $this->runForEachAgentInParallel(
                 definition: $definition,
                 agent: $agent,
+                items: $items,
                 inputs: $inputs,
                 secrets: $secrets,
                 agentOutputs: $agentOutputs,
@@ -226,9 +227,104 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 runId: $runId,
                 agentMode: $agentMode,
                 outputStrategy: $outputStrategy,
-                iterationIdentifier: $agent->forEachIdentifier(),
-                iterationValue: $item,
             );
+
+        }
+
+        return $this->runForEachAgentSerially(
+            definition: $definition,
+            agent: $agent,
+            items: $items,
+            inputs: $inputs,
+            secrets: $secrets,
+            agentOutputs: $agentOutputs,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentMode: $agentMode,
+            outputStrategy: $outputStrategy,
+        );
+    }
+
+    protected function runForEachAgentInParallel(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    {
+        $tasks = [];
+
+        foreach ($items as $index => $item) {
+
+            $tasks[] = fn (): array => [
+                'index' => $index,
+                'result' => $this->runForEachAgentIteration(
+                    definition: $definition,
+                    agent: $agent,
+                    item: $item,
+                    inputs: $inputs,
+                    secrets: $secrets,
+                    agentOutputs: $agentOutputs,
+                    toolMap: $toolMap,
+                    runId: $runId,
+                    agentMode: $agentMode,
+                    outputStrategy: $outputStrategy,
+                ),
+            ];
+
+        }
+
+        $results = Fork::new()
+            ->concurrent(max(1, (int) config('superwire.runtime.max_parallel_agents', 4)))
+            ->run(...$tasks);
+
+        usort($results, fn (array $left, array $right): int => $left[ 'index' ] <=> $right[ 'index' ]);
+
+        return $this->collectForEachAgentResults(agent: $agent, results: array_column($results, 'result'));
+    }
+
+    protected function runForEachAgentSerially(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    {
+        $results = [];
+
+        foreach ($items as $item) {
+
+            $results[] = $this->runForEachAgentIteration(
+                definition: $definition,
+                agent: $agent,
+                item: $item,
+                inputs: $inputs,
+                secrets: $secrets,
+                agentOutputs: $agentOutputs,
+                toolMap: $toolMap,
+                runId: $runId,
+                agentMode: $agentMode,
+                outputStrategy: $outputStrategy,
+            );
+
+        }
+
+        return $this->collectForEachAgentResults(agent: $agent, results: $results);
+    }
+
+    protected function runForEachAgentIteration(WorkflowDefinition $definition, Agent $agent, mixed $item, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    {
+        return $this->runAgent(
+            definition: $definition,
+            agent: $agent,
+            inputs: $inputs,
+            secrets: $secrets,
+            agentOutputs: $agentOutputs,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentMode: $agentMode,
+            outputStrategy: $outputStrategy,
+            iterationIdentifier: $agent->forEachIdentifier(),
+            iterationValue: $item,
+        );
+    }
+
+    protected function collectForEachAgentResults(Agent $agent, array $results): array
+    {
+        $outputs = [];
+        $history = [];
+
+        foreach ($results as $result) {
 
             JsonSchemaFactory::validate(
                 schema: $agent->output->iteration->jsonSchema,

@@ -2,7 +2,7 @@
 
 declare(strict_types = 1);
 
-namespace Superwire\Laravel\Runtime\Runner;
+namespace Superwire\Laravel\Runtime\Runner\Output;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;

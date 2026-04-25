@@ -62,7 +62,12 @@ final class WorkflowTest extends TestCase
     {
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2, 3 ],
-            'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ],
+            'speller' => function (AgentInvocation $invocation): string {
+                self::assertSame('test-model', $invocation->model);
+                self::assertSame('test-key', $invocation->providerConfig[ 'api_key' ]);
+
+                return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+            },
         ]);
 
         $result = Workflow::fromFile(__DIR__ . '/Stubs/simple_loop.wire')
@@ -74,9 +79,7 @@ final class WorkflowTest extends TestCase
             ->run();
 
         $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $result->output);
-        $this->assertSame('Please spell out the number: 1 in lowercase.', $runner->invocation(1)->prompt);
-        $this->assertSame('test-model', $runner->invocation(1)->model);
-        $this->assertSame('test-key', $runner->invocation(1)->providerConfig[ 'api_key' ]);
+        $this->assertSame('Please spell out the number: 1 in lowercase.', $result->history[ 2 ][ 'content' ]);
     }
 
     public function test_it_resolves_input_and_nested_output_interpolation(): void

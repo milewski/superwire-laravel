@@ -2,13 +2,16 @@
 
 declare(strict_types = 1);
 
-namespace Superwire\Laravel\Runtime\Runner;
+namespace Superwire\Laravel\Runtime\Runner\Strategy;
 
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\Runner\Agent\SuperwireAnonymousAgent;
+use Superwire\Laravel\Runtime\Runner\Agent\SuperwireStructuredAnonymousAgent;
+use Superwire\Laravel\Runtime\Runner\Output\OutputSchemaTypeMapper;
 
 final readonly class StructuredOutputStrategy
 {

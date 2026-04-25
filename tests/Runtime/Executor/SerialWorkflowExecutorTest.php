@@ -61,9 +61,8 @@ final class SerialWorkflowExecutorTest extends TestCase
         $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $result->output);
         $this->assertSame('test-model', $runner->invocation(0)->model);
         $this->assertSame('http://example.test/v1', $runner->invocation(0)->providerConfig[ 'endpoint' ]);
-        $this->assertSame('Please spell out the number: 1 in lowercase.', $runner->invocation(1)->prompt);
-        $this->assertSame('number', $runner->invocation(1)->iterationIdentifier);
-        $this->assertSame(1, $runner->invocation(1)->iterationValue);
+        $this->assertSame('Please spell out the number: 1 in lowercase.', $result->history[ 2 ][ 'content' ]);
+        $this->assertSame('speller', $result->history[ 2 ][ 'agent' ]);
     }
 
     public function test_it_uses_array_agent_output_for_schema_validation_and_reference_resolution(): void
@@ -179,9 +178,43 @@ final class SerialWorkflowExecutorTest extends TestCase
                 [ 'number' => 5, 'number_string' => 'five' ],
             ],
         ], actual: $result->output);
-        $this->assertSame(expected: [ 'lister', 'lister', 'counter', 'counter', 'counter', 'counter', 'counter' ], actual: $runner->agentNames());
+        $this->assertSame(expected: [ 'lister', 'lister' ], actual: array_slice($runner->agentNames(), 0, 2));
         $this->assertStringContainsString(needle: 'Validation error: Agent `lister` returned output that cannot be parsed as an object.', haystack: $runner->invocation(1)->prompt);
         $this->assertStringContainsString(needle: 'Previous response: []', haystack: $runner->invocation(1)->prompt);
+    }
+
+    public function test_it_executes_for_each_iterations_in_parallel(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            $this->markTestSkipped('PCNTL is required for parallel for_each execution.');
+        }
+
+        $runner = FakeAgentRunner::fake([
+            'counter' => [ 1, 2, 3 ],
+            'speller' => function (AgentInvocation $invocation): string {
+                usleep(250_000);
+
+                return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+            },
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $started = microtime(true);
+
+        $result = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'simple_loop.wire'),
+            secrets: [
+                'api_key' => 'test-key',
+                'endpoint' => 'http://example.test/v1',
+                'model' => 'test-model',
+            ],
+        );
+
+        $elapsed = microtime(true) - $started;
+
+        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three' ] ], actual: $result->output);
+        $this->assertLessThan(0.45, $elapsed);
     }
 
     public function test_it_stops_retrying_agent_outputs_after_configured_attempts(): void

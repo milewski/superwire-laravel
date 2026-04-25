@@ -2,12 +2,16 @@
 
 declare(strict_types = 1);
 
-namespace Superwire\Laravel\Runtime\Runner;
+namespace Superwire\Laravel\Runtime\Runner\Strategy;
 
 use InvalidArgumentException;
 use Laravel\Ai\AnonymousAgent;
 use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\Runner\Agent\SuperwireAnonymousAgent;
+use Superwire\Laravel\Runtime\Runner\Output\OutputAbortTool;
+use Superwire\Laravel\Runtime\Runner\Output\OutputSchemaTypeMapper;
+use Superwire\Laravel\Runtime\Runner\Output\OutputSuccessTool;
 
 final readonly class ToolCallingStrategy
 {

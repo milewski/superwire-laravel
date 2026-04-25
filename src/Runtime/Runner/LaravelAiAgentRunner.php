@@ -16,6 +16,9 @@ use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\AgentRunResult;
+use Superwire\Laravel\Runtime\Runner\Output\OutputSchemaTypeMapper;
+use Superwire\Laravel\Runtime\Runner\Strategy\StructuredOutputStrategy;
+use Superwire\Laravel\Runtime\Runner\Strategy\ToolCallingStrategy;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
 
