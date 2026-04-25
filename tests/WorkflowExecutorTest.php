@@ -19,7 +19,7 @@ final class WorkflowExecutorTest extends TestCase
             'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/stubs/parallel_batch.wire')->run();
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')->run();
 
         $this->assertSame([ 'review' => 'Combine customer and investor.' ], $output);
         $this->assertSame([ 'customer_story', 'investor_story', 'review' ], $runner->agentNames());
@@ -32,7 +32,7 @@ final class WorkflowExecutorTest extends TestCase
             'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ],
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/stubs/simple_loop.wire')
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/simple_loop.wire')
             ->withSecrets([
                 'api_key' => 'test-key',
                 'endpoint' => 'http://example.test/v1',
@@ -58,7 +58,7 @@ final class WorkflowExecutorTest extends TestCase
             ],
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/stubs/interpolation_chain.wire')
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/interpolation_chain.wire')
             ->withInputs([
                 'product_name' => 'Superwire',
                 'audience' => 'developers',
@@ -76,11 +76,11 @@ final class WorkflowExecutorTest extends TestCase
 
     public function test_artisan_command_compiles_wire_workflow_to_json(): void
     {
-        $this->artisan('superwire:compile', [ 'workflow' => __DIR__ . '/stubs/greeting.wire' ])
+        $this->artisan('superwire:compile', [ 'workflow' => __DIR__ . '/Stubs/greeting.wire' ])
             ->expectsOutputToContain('"format": "superwire_workflow_compact_v1"')
             ->assertSuccessful();
 
-        $definition = app(WorkflowCompiler::class)->compile(workflowPath: __DIR__ . '/stubs/greeting.wire');
+        $definition = app(WorkflowCompiler::class)->compile(workflowPath: __DIR__ . '/Stubs/greeting.wire');
 
         $this->assertSame(
             expected: 'greeting',
