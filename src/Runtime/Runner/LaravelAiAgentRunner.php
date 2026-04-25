@@ -10,16 +10,19 @@ use Illuminate\JsonSchema\Types\Type;
 use InvalidArgumentException;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Contracts\Providers\TextProvider;
 use Laravel\Ai\Prompts\AgentPrompt;
+use Laravel\Ai\Responses\StreamableAgentResponse;
 use Laravel\Ai\StructuredAnonymousAgent;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
 
-final readonly class LaravelAiAgentRunner implements AgentRunner
+final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgentRunner
 {
     public function __construct(
         private AiManager $ai,
@@ -32,21 +35,34 @@ final readonly class LaravelAiAgentRunner implements AgentRunner
     {
         $this->configureProvider(invocation: $invocation);
 
-        $outputField = $this->outputField(invocation: $invocation);
         $provider = $this->ai->textProvider(name: $invocation->provider->name);
-        $response = $provider->prompt(new AgentPrompt(
-            agent: $this->agentForOutput(field: $outputField, invocation: $invocation),
-            prompt: $invocation->prompt,
-            attachments: [],
-            provider: $provider,
-            model: $invocation->model,
-        ));
+        $response = $provider->prompt($this->prompt(invocation: $invocation, provider: $provider));
 
         if ($response instanceof StructuredAgentResponse) {
             return $response->structured;
         }
 
         return $response->text;
+    }
+
+    public function runStream(AgentInvocation $invocation): StreamableAgentResponse
+    {
+        $this->configureProvider(invocation: $invocation);
+
+        $provider = $this->ai->textProvider(name: $invocation->provider->name);
+
+        return $provider->stream($this->prompt(invocation: $invocation, provider: $provider));
+    }
+
+    private function prompt(AgentInvocation $invocation, TextProvider $provider): AgentPrompt
+    {
+        return new AgentPrompt(
+            agent: $this->agentForOutput(field: $this->outputField(invocation: $invocation), invocation: $invocation),
+            prompt: $invocation->prompt,
+            attachments: [],
+            provider: $provider,
+            model: $invocation->model,
+        );
     }
 
     private function agentForOutput(OutputField $field, AgentInvocation $invocation): AnonymousAgent

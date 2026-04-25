@@ -5,8 +5,10 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests;
 
 use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
+use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
 use Superwire\Laravel\Workflow;
@@ -108,5 +110,41 @@ final class WorkflowTest extends TestCase
             expected: [ 'weather' => 'sunny' ],
             actual: $output,
         );
+    }
+
+    public function test_it_can_run_workflow_agents_using_stream_mode(): void
+    {
+        $runner = new FakeStreamableAgentRunner(
+            responses: [ 'greeting' => 'request response' ],
+            streamText: 'stream response',
+        );
+
+        app()->instance(AgentRunner::class, $runner);
+
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
+            ->usingStreamMode()
+            ->run();
+
+        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $output);
+        $this->assertSame(expected: 'greeting', actual: $runner->streamInvocation?->agent->name);
+    }
+
+    public function test_it_can_run_workflow_agents_using_request_mode(): void
+    {
+        config()->set('superwire.runtime.agent_mode', 'stream');
+
+        $runner = new FakeStreamableAgentRunner(
+            responses: [ 'greeting' => 'request response' ],
+            streamText: 'stream response',
+        );
+
+        app()->instance(AgentRunner::class, $runner);
+
+        $output = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
+            ->usingRequestMode()
+            ->run();
+
+        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $output);
+        $this->assertNull(actual: $runner->streamInvocation);
     }
 }

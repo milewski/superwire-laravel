@@ -8,10 +8,5 @@ use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 
 interface WorkflowExecutor
 {
-    /**
-     * @param array<string, mixed> $inputs
-     * @param array<string, mixed> $secrets
-     * @return array<string, mixed>
-     */
-    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null): array;
+    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null, ?string $agentMode = null): array;
 }

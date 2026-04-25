@@ -14,8 +14,10 @@ use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StreamableAgentResponse;
 use Laravel\Ai\Responses\StructuredAgentResponse;
+use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\StructuredAnonymousAgent;
 use RuntimeException;
+use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
@@ -177,6 +179,56 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertInstanceOf(expected: LaravelAiTool::class, actual: $tools[ 0 ]);
     }
 
+    public function test_it_streams_using_laravel_ai_stream_api(): void
+    {
+        $streamResponse = new StreamableAgentResponse(
+            invocationId: 'invocation-1',
+            generator: fn (): array => [
+                new TextDelta(
+                    id: 'event-1',
+                    messageId: 'message-1',
+                    delta: 'Hello ',
+                    timestamp: 1,
+                ),
+                new TextDelta(
+                    id: 'event-2',
+                    messageId: 'message-1',
+                    delta: 'world',
+                    timestamp: 2,
+                ),
+            ],
+            meta: new Meta(),
+        );
+
+        $provider = new RecordingTextProvider(
+            response: new AgentResponse(
+                invocationId: 'invocation-1',
+                text: 'unused',
+                usage: new Usage(),
+                meta: new Meta(),
+            ),
+            streamResponse: $streamResponse,
+        );
+
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: $provider),
+            config: $this->app[ 'config' ],
+        );
+
+        $this->assertInstanceOf(expected: StreamableAgentRunner::class, actual: $runner);
+
+        $stream = $runner->runStream(invocation: $this->invocation(
+            prompt: 'Stream a short welcome message.',
+            model: 'test-model',
+            providerConfig: [ 'driver' => 'openai' ],
+        ));
+
+        $this->assertSame(expected: $streamResponse, actual: $stream);
+        $this->assertSame(expected: 'Stream a short welcome message.', actual: $provider->streamPrompt->prompt);
+        $this->assertSame(expected: 'test-model', actual: $provider->streamPrompt->model);
+        $this->assertSame(expected: 'Hello world', actual: TextDelta::combine(iterator_to_array($stream)));
+    }
+
     private function invocation(string $prompt, string $model, array $providerConfig, ?string $wire = null): AgentInvocation
     {
         $workflowPath = $this->writeTemporaryWorkflow(
@@ -247,8 +299,12 @@ final class RecordingAiManager extends AiManager
 final class RecordingTextProvider implements TextProvider
 {
     public ?AgentPrompt $prompt = null;
+    public ?AgentPrompt $streamPrompt = null;
 
-    public function __construct(private readonly AgentResponse | StructuredAgentResponse $response)
+    public function __construct(
+        private readonly AgentResponse | StructuredAgentResponse $response,
+        private readonly ?StreamableAgentResponse $streamResponse = null,
+    )
     {
     }
 
@@ -261,7 +317,9 @@ final class RecordingTextProvider implements TextProvider
 
     public function stream(AgentPrompt $prompt): StreamableAgentResponse
     {
-        throw new RuntimeException('Streaming is not used by these tests.');
+        $this->streamPrompt = $prompt;
+
+        return $this->streamResponse ?? throw new RuntimeException('Streaming response was not configured.');
     }
 
     public function textGateway(): TextGateway

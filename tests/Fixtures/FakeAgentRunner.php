@@ -7,7 +7,7 @@ namespace Superwire\Laravel\Tests\Fixtures;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Runtime\AgentInvocation;
 
-final class FakeAgentRunner implements AgentRunner
+class FakeAgentRunner implements AgentRunner
 {
     private array $invocations = [];
 

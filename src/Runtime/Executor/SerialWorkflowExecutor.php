@@ -6,6 +6,7 @@ namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
 use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Agent\OutputFieldReference;
@@ -18,6 +19,7 @@ use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Support\JsonSchemaFactory;
 use Superwire\Laravel\Tools\AbstractTool;
+use Laravel\Ai\Streaming\Events\TextDelta;
 
 final readonly class SerialWorkflowExecutor implements WorkflowExecutor
 {
@@ -30,11 +32,12 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
     {
     }
 
-    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null): array
+    public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null, ?string $agentMode = null): array
     {
         $definition->validateInputValues($inputs);
         $definition->validateSecretValues($secrets);
         $runId ??= hash('sha256', $definition->workflowPath . serialize($inputs) . serialize($secrets));
+        $agentMode ??= (string) config('superwire.runtime.agent_mode', 'request');
         $toolMap = $this->toolMap(tools: $tools);
 
         try {
@@ -53,8 +56,8 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
                     );
 
                     $agentOutputs[ $agent->name ] = $agent->runsForEach()
-                        ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId)
-                        : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId);
+                        ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode)
+                        : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode);
 
                     JsonSchemaFactory::validate(
                         schema: $agent->output->finalOutput->jsonSchema,
@@ -75,7 +78,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
     }
 
-    private function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, ?string $iterationIdentifier = null, mixed $iterationValue = null): mixed
+    private function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, string $agentMode, ?string $iterationIdentifier = null, mixed $iterationValue = null): mixed
     {
         $resolver = new ReferenceResolver(
             inputs: $inputs,
@@ -87,7 +90,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
 
         $provider = $definition->providers->findByName($agent->provider);
 
-        $output = $this->agentRunner->run(new AgentInvocation(
+        $invocation = new AgentInvocation(
             agent: $agent,
             provider: $provider,
             model: $this->resolveModel(agent: $agent, resolver: $resolver),
@@ -99,7 +102,9 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             tools: $this->resolveTools(definition: $definition, agent: $agent, resolver: $resolver, toolMap: $toolMap, runId: $runId),
             iterationIdentifier: $iterationIdentifier,
             iterationValue: $iterationValue,
-        ));
+        );
+
+        $output = $this->runInvocation(invocation: $invocation, agentMode: $agentMode);
 
         return $this->outputParser->parse(
             output: $output,
@@ -108,7 +113,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId): array
+    private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, string $agentMode): array
     {
         $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
         $iterable = $resolver->resolve($agent->forEachReference());
@@ -129,6 +134,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 agentOutputs: $agentOutputs,
                 toolMap: $toolMap,
                 runId: $runId,
+                agentMode: $agentMode,
                 iterationIdentifier: $agent->forEachIdentifier(),
                 iterationValue: $item,
             );
@@ -153,6 +159,24 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 throw new InvalidArgumentException(sprintf('Agent `%s` dependency `%s` has not been resolved.', $agent->name, $dependency));
             }
         }
+    }
+
+    private function runInvocation(AgentInvocation $invocation, string $agentMode): array | string
+    {
+        return match ($agentMode) {
+            'request' => $this->agentRunner->run(invocation: $invocation),
+            'stream' => $this->runStreamInvocation(invocation: $invocation),
+            default => throw new InvalidArgumentException(sprintf('Unsupported Superwire agent mode `%s`.', $agentMode)),
+        };
+    }
+
+    private function runStreamInvocation(AgentInvocation $invocation): string
+    {
+        if (!$this->agentRunner instanceof StreamableAgentRunner) {
+            throw new InvalidArgumentException(sprintf('Configured agent runner `%s` does not support streaming.', $this->agentRunner::class));
+        }
+
+        return TextDelta::combine(iterator_to_array($this->agentRunner->runStream(invocation: $invocation)));
     }
 
     private function resolveWorkflowOutput(WorkflowDefinition $definition, array $inputs, array $secrets, array $agentOutputs): array

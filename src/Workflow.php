@@ -18,6 +18,7 @@ final class Workflow
         private array $inputs = [],
         private array $secrets = [],
         private array $tools = [],
+        private ?string $agentMode = null,
     )
     {
     }
@@ -74,6 +75,22 @@ final class Workflow
         return $workflow;
     }
 
+    public function usingRequestMode(): self
+    {
+        $workflow = clone $this;
+        $workflow->agentMode = 'request';
+
+        return $workflow;
+    }
+
+    public function usingStreamMode(): self
+    {
+        $workflow = clone $this;
+        $workflow->agentMode = 'stream';
+
+        return $workflow;
+    }
+
     public function run(): array
     {
         return app(WorkflowExecutor::class)->execute(
@@ -82,6 +99,7 @@ final class Workflow
             secrets: $this->secrets,
             tools: $this->tools,
             runId: (string) Str::uuid(),
+            agentMode: $this->agentMode,
         );
     }
 

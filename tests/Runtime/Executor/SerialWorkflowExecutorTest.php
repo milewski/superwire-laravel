@@ -9,6 +9,7 @@ use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
+use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
@@ -214,6 +215,60 @@ final class SerialWorkflowExecutorTest extends TestCase
                 definition: $this->workflowDefinition(fixture: 'tool_schema_retry.wire'),
                 tools: [ new BoundSchemaTool(), new RetryWeatherTool() ],
             ),
+        );
+    }
+
+    public function test_it_uses_configured_stream_agent_mode(): void
+    {
+        config()->set('superwire.runtime.agent_mode', 'stream');
+
+        $runner = new FakeStreamableAgentRunner(
+            responses: [ 'greeting' => 'request response' ],
+            streamText: 'stream response',
+        );
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $output = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'greeting.wire'),
+        );
+
+        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $output);
+        $this->assertSame(expected: 'greeting', actual: $runner->streamInvocation?->agent->name);
+        $this->assertSame(expected: [], actual: $runner->agentNames());
+    }
+
+    public function test_it_allows_explicit_request_agent_mode_to_override_configured_stream_mode(): void
+    {
+        config()->set('superwire.runtime.agent_mode', 'stream');
+
+        $runner = new FakeStreamableAgentRunner(
+            responses: [ 'greeting' => 'request response' ],
+            streamText: 'stream response',
+        );
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $output = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'greeting.wire'),
+            agentMode: 'request',
+        );
+
+        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $output);
+        $this->assertNull(actual: $runner->streamInvocation);
+    }
+
+    public function test_it_rejects_stream_agent_mode_when_runner_does_not_support_streaming(): void
+    {
+        $runner = FakeAgentRunner::fake([ 'greeting' => 'request response' ]);
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('does not support streaming');
+
+        $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'greeting.wire'),
+            agentMode: 'stream',
         );
     }
 
