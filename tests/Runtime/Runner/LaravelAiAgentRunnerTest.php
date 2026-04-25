@@ -5,24 +5,33 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Runtime\Runner;
 
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Http;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Contracts\HasProviderOptions;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Contracts\Gateway\TextGateway;
 use Laravel\Ai\Contracts\Providers\TextProvider;
 use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
+use Laravel\Ai\Responses\Data\ToolResult;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\StreamableAgentResponse;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\StructuredAnonymousAgent;
+use Laravel\Ai\Tools\Request;
 use RuntimeException;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
+use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
+use Superwire\Laravel\Runtime\Runner\OutputAbortTool;
+use Superwire\Laravel\Runtime\Runner\OutputSuccessTool;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
 use Superwire\Laravel\Tests\TestCase;
@@ -70,7 +79,9 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertNull(actual: $this->app[ 'config' ]->get('ai.providers.openai.api_key'));
         $this->assertNull(actual: $this->app[ 'config' ]->get('ai.providers.openai.endpoint'));
         $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
-        $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
+        $this->assertInstanceOf(HasProviderOptions::class, $provider->prompt->agent);
+        $this->assertSame(expected: [ 'reasoning' => [ 'effort' => 'none' ] ], actual: $provider->prompt->agent->providerOptions('openai'));
+        $this->assertNotInstanceOf(HasStructuredOutput::class, $provider->prompt->agent);
     }
 
     public function test_it_uses_structured_agent_for_object_outputs(): void
@@ -111,6 +122,9 @@ final class LaravelAiAgentRunnerTest extends TestCase
         );
 
         $this->assertInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
+        $this->assertInstanceOf(HasStructuredOutput::class, $provider->prompt->agent);
+        $this->assertInstanceOf(HasProviderOptions::class, $provider->prompt->agent);
+        $this->assertSame(expected: [ 'reasoning' => [ 'effort' => 'none' ] ], actual: $provider->prompt->agent->providerOptions('openai'));
 
         $schema = $provider->prompt->agent->schema(new JsonSchemaTypeFactory());
 
@@ -123,6 +137,173 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertSame(expected: [ 'summary', 'tagline' ], actual: $objectSchema[ 'required' ]);
         $this->assertSame(expected: [ 'type' => 'string' ], actual: $objectSchema[ 'properties' ][ 'summary' ]);
         $this->assertSame(expected: [ 'type' => 'string' ], actual: $objectSchema[ 'properties' ][ 'tagline' ]);
+    }
+
+    public function test_laravel_ai_sends_openai_responses_structured_json_schema_request(): void
+    {
+        Http::fake([
+            'http://example.test/v1/responses' => Http::response([
+                'id' => 'response-1',
+                'model' => 'test-model',
+                'status' => 'completed',
+                'output' => [[
+                    'type' => 'message',
+                    'status' => 'completed',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => json_encode([ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ]),
+                    ]],
+                ]],
+                'usage' => [
+                    'input_tokens' => 1,
+                    'output_tokens' => 1,
+                ],
+            ]),
+        ]);
+
+        $result = app(LaravelAiAgentRunner::class)->run(
+            invocation: $this->invocation(
+                prompt: 'Summarize Superwire.',
+                model: 'test-model',
+                providerConfig: [
+                    'driver' => 'openai',
+                    'api_key' => 'test-key',
+                    'endpoint' => 'http://example.test/v1',
+                ],
+                wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
+            ),
+        );
+
+        $this->assertSame(expected: [ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ], actual: $result->output);
+
+        Http::assertSent(function ($request): bool {
+            $body = $request->data();
+
+            return str_ends_with($request->url(), '/responses')
+                && ($body[ 'text' ][ 'format' ][ 'type' ] ?? null) === 'json_schema'
+                && ($body[ 'text' ][ 'format' ][ 'strict' ] ?? null) === true
+                && ($body[ 'reasoning' ][ 'effort' ] ?? null) === 'none'
+                && array_key_exists('summary', $body[ 'text' ][ 'format' ][ 'schema' ][ 'properties' ] ?? []);
+        });
+    }
+
+    public function test_it_can_use_tool_calling_strategy_for_structured_outputs(): void
+    {
+        $response = new AgentResponse(
+            invocationId: 'invocation-1',
+            text: '',
+            usage: new Usage(),
+            meta: new Meta(),
+        );
+
+        $response->withToolCallsAndResults(
+            toolCalls: new Collection(),
+            toolResults: new Collection([
+                new ToolResult(
+                    id: 'tool-result-1',
+                    name: 'OutputSuccessTool',
+                    arguments: [ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ],
+                    result: json_encode([
+                        'superwire_output_success' => true,
+                        'output' => [ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ],
+                    ]),
+                ),
+            ]),
+        );
+
+        $provider = new RecordingTextProvider(response: $response);
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: $provider),
+            config: $this->app[ 'config' ],
+        );
+
+        $result = $runner->run(
+            invocation: $this->invocation(
+                prompt: 'Summarize Superwire.',
+                model: 'test-model',
+                providerConfig: [ 'driver' => 'openai' ],
+                wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
+                outputStrategy: OutputStrategy::ToolCalling,
+            ),
+        );
+
+        $this->assertSame(expected: [ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ], actual: $result->output);
+        $this->assertInstanceOf(expected: OutputSuccessTool::class, actual: $provider->prompt->agent->tools()[ 0 ]);
+        $this->assertInstanceOf(expected: OutputAbortTool::class, actual: $provider->prompt->agent->tools()[ 1 ]);
+    }
+
+    public function test_output_success_tool_reports_invalid_schema_arguments(): void
+    {
+        $provider = new RecordingTextProvider(response: new AgentResponse(
+            invocationId: 'invocation-1',
+            text: '',
+            usage: new Usage(),
+            meta: new Meta(),
+        ));
+
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: $provider),
+            config: $this->app[ 'config' ],
+        );
+
+        try {
+            $runner->run(invocation: $this->invocation(
+                prompt: 'Summarize Superwire.',
+                model: 'test-model',
+                providerConfig: [ 'driver' => 'openai' ],
+                wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
+                outputStrategy: OutputStrategy::ToolCalling,
+            ));
+        } catch (\InvalidArgumentException) {
+        }
+
+        $result = $provider->prompt->agent->tools()[ 0 ]->handle(new Request([ 'summary' => 'Only summary' ]));
+
+        $this->assertStringContainsString(needle: 'error', haystack: $result);
+        $this->assertStringContainsString(needle: 'tagline', haystack: $result);
+    }
+
+    public function test_tool_calling_strategy_can_abort_outputs(): void
+    {
+        $response = new AgentResponse(
+            invocationId: 'invocation-1',
+            text: '',
+            usage: new Usage(),
+            meta: new Meta(),
+        );
+
+        $response->withToolCallsAndResults(
+            toolCalls: new Collection(),
+            toolResults: new Collection([
+                new ToolResult(
+                    id: 'tool-result-1',
+                    name: 'OutputAbortTool',
+                    arguments: [ 'reason' => 'Insufficient information.' ],
+                    result: json_encode([
+                        'superwire_output_abort' => true,
+                        'reason' => 'Insufficient information.',
+                    ]),
+                ),
+            ]),
+        );
+
+        $runner = new LaravelAiAgentRunner(
+            ai: new RecordingAiManager(app: $this->app, provider: new RecordingTextProvider(response: $response)),
+            config: $this->app[ 'config' ],
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Agent aborted output: Insufficient information.');
+
+        $runner->run(
+            invocation: $this->invocation(
+                prompt: 'Summarize Superwire.',
+                model: 'test-model',
+                providerConfig: [ 'driver' => 'openai' ],
+                wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
+                outputStrategy: OutputStrategy::ToolCalling,
+            ),
+        );
     }
 
     public function test_it_returns_raw_text_for_non_object_outputs(): void
@@ -151,7 +332,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         );
 
         $this->assertInstanceOf(AnonymousAgent::class, $provider->prompt->agent);
-        $this->assertNotInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
+        $this->assertNotInstanceOf(HasStructuredOutput::class, $provider->prompt->agent);
         $this->assertSame(expected: '42', actual: $result->output);
     }
 
@@ -250,7 +431,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertSame(expected: 'Hello world', actual: TextDelta::combine(iterator_to_array($stream)));
     }
 
-    private function invocation(string $prompt, string $model, array $providerConfig, ?string $wire = null): AgentInvocation
+    private function invocation(string $prompt, string $model, array $providerConfig, ?string $wire = null, OutputStrategy $outputStrategy = OutputStrategy::Structured): AgentInvocation
     {
         $workflowPath = $this->writeTemporaryWorkflow(
             wire: $wire ?? $this->wireWithOutput(output: 'string'),
@@ -273,6 +454,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             secrets: [],
             agentOutputs: [],
             tools: [],
+            outputStrategy: $outputStrategy,
         );
     }
 

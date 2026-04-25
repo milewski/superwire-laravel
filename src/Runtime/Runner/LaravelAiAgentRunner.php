@@ -5,19 +5,15 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime\Runner;
 
 use Illuminate\Contracts\Config\Repository;
-use Illuminate\JsonSchema\JsonSchemaTypeFactory;
-use Illuminate\JsonSchema\Types\Type;
-use InvalidArgumentException;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Contracts\Providers\TextProvider;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\Responses\StreamableAgentResponse;
-use Laravel\Ai\StructuredAnonymousAgent;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Data\Agent\OutputField;
+use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\AgentRunResult;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
@@ -28,6 +24,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
     public function __construct(
         private AiManager $ai,
         private Repository $config,
+        private OutputSchemaTypeMapper $schemaTypeMapper = new OutputSchemaTypeMapper(),
     )
     {
     }
@@ -38,9 +35,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
 
         $provider = $this->ai->textProvider(name: $invocation->provider->name);
         $response = $provider->prompt($this->prompt(invocation: $invocation, provider: $provider));
-        $output = $response instanceof StructuredAgentResponse
-            ? $response->structured
-            : $response->text;
+        $output = $this->strategy(invocation: $invocation)->output(response: $response);
 
         return new AgentRunResult(
             output: $output,
@@ -70,25 +65,20 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
 
     private function agentForOutput(OutputField $field, AgentInvocation $invocation): AnonymousAgent
     {
-        if ($field->isObject()) {
-
-            return new StructuredAnonymousAgent(
-                instructions: '',
-                messages: [],
-                tools: $this->tools(invocation: $invocation),
-                schema: fn (JsonSchemaTypeFactory $schema): array => $this->schemaFields(
-                    fields: $field->fields(),
-                    schema: $schema,
-                ),
-            );
-
-        }
-
-        return new AnonymousAgent(
-            instructions: '',
-            messages: [],
+        return $this->strategy(invocation: $invocation)->agent(
+            field: $field,
+            invocation: $invocation,
             tools: $this->tools(invocation: $invocation),
+            schemaTypeMapper: $this->schemaTypeMapper,
         );
+    }
+
+    private function strategy(AgentInvocation $invocation): StructuredOutputStrategy | ToolCallingStrategy
+    {
+        return match ($invocation->outputStrategy) {
+            OutputStrategy::Structured => new StructuredOutputStrategy(),
+            OutputStrategy::ToolCalling => new ToolCallingStrategy(),
+        };
     }
 
     private function tools(AgentInvocation $invocation): array
@@ -180,69 +170,6 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         }
 
         return $value;
-    }
-
-    private function schemaFields(array $fields, JsonSchemaTypeFactory $schema): array
-    {
-        $schemaFields = [];
-
-        foreach ($fields as $name => $fieldType) {
-
-            if (!is_string($name) || !is_array($fieldType)) {
-                continue;
-            }
-
-            $schemaFields[ $name ] = $this->schemaType(field: OutputField::fromWorkflowType($fieldType), schema: $schema)->required();
-
-        }
-
-        return $schemaFields;
-    }
-
-    private function schemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
-    {
-        return match ($field->kind()) {
-            'string' => $schema->string(),
-            'integer' => $schema->integer(),
-            'number', 'float' => $schema->number(),
-            'boolean' => $schema->boolean(),
-            'null' => $schema->string()->nullable(),
-            'string_enum' => $schema->string()->enum($field->enumValues()),
-            'array' => $this->arraySchemaType(field: $field, schema: $schema),
-            'tuple' => $schema->array(),
-            'object' => $schema->object($this->schemaFields(fields: $field->fields(), schema: $schema)),
-            'union' => $this->unionSchemaType(field: $field, schema: $schema),
-            default => throw new InvalidArgumentException('Unsupported structured output type.'),
-        };
-    }
-
-    private function arraySchemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
-    {
-        $type = $schema->array()->items($this->schemaType(
-            field: $field->itemType(),
-            schema: $schema,
-        ));
-
-        if ($field->fixedLength() !== null) {
-            $type->min($field->fixedLength())->max($field->fixedLength());
-        }
-
-        return $type;
-    }
-
-    private function unionSchemaType(OutputField $field, JsonSchemaTypeFactory $schema): Type
-    {
-        $members = $field->unionMembers();
-        $nonNullMembers = array_values(array_filter(
-            array: $members,
-            callback: fn (OutputField $member): bool => $member->kind() !== 'null',
-        ));
-
-        if (count($nonNullMembers) === 1 && count($members) === 2) {
-            return $this->schemaType(field: $nonNullMembers[ 0 ], schema: $schema)->nullable();
-        }
-
-        return $schema->string();
     }
 
     private function outputField(AgentInvocation $invocation): OutputField

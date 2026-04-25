@@ -11,6 +11,8 @@ use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\WorkflowCompiler as WorkflowCompilerInterface;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Http\Controllers\InternalToolController;
+use Superwire\Laravel\Enums\WorkflowExecutionMode;
+use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
 use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
 use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
@@ -31,7 +33,12 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
             return new WorkflowCompiler((string) config('superwire.cli.path'));
         });
 
-        $this->app->bind(WorkflowExecutor::class, SerialWorkflowExecutor::class);
+        $this->app->bind(WorkflowExecutor::class, function (): WorkflowExecutor {
+            return match (WorkflowExecutionMode::from((string) config('superwire.runtime.executor', WorkflowExecutionMode::Serial->value))) {
+                WorkflowExecutionMode::Serial => app(SerialWorkflowExecutor::class),
+                WorkflowExecutionMode::Parallel => app(ParallelWorkflowExecutor::class),
+            };
+        });
     }
 
     public function boot(): void

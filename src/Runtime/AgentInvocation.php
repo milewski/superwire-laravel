@@ -6,6 +6,7 @@ namespace Superwire\Laravel\Runtime;
 
 use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Agent\Provider;
+use Superwire\Laravel\Enums\OutputStrategy;
 
 final readonly class AgentInvocation
 {
@@ -19,6 +20,7 @@ final readonly class AgentInvocation
         public array $secrets,
         public array $agentOutputs,
         public array $tools,
+        public OutputStrategy $outputStrategy = OutputStrategy::Structured,
         public ?string $iterationIdentifier = null,
         public mixed $iterationValue = null,
     )

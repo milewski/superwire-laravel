@@ -6,6 +6,8 @@ namespace Superwire\Laravel\Tests;
 
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Enums\OutputStrategy;
+use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
@@ -15,6 +17,32 @@ use Superwire\Laravel\Workflow;
 
 final class WorkflowTest extends TestCase
 {
+    public function test_temp_live_example(): void
+    {
+//        if (getenv('SUPERWIRE_RUN_LIVE_TESTS') !== '1') {
+//            $this->markTestSkipped('Set SUPERWIRE_RUN_LIVE_TESTS=1 to run the live LLM workflow test.');
+//        }
+
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/example.wire')
+            ->usingRequestMode()
+            ->withStrategy(OutputStrategy::ToolCalling)
+            ->parallel()
+            ->run();
+
+        $this->assertSame(
+            expected: [
+                'numbers' => [
+                    [ 'number' => 1, 'number_string' => 'one' ],
+                    [ 'number' => 2, 'number_string' => 'two' ],
+                    [ 'number' => 3, 'number_string' => 'three' ],
+                    [ 'number' => 4, 'number_string' => 'four' ],
+                    [ 'number' => 5, 'number_string' => 'five' ],
+                ],
+            ],
+            actual: $result->output,
+        );
+    }
+
     public function test_it_executes_batches_and_resolves_agent_references(): void
     {
         $runner = FakeAgentRunner::fake([
@@ -23,9 +51,10 @@ final class WorkflowTest extends TestCase
             'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')->run();
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')->run();
 
-        $this->assertSame([ 'review' => 'Combine customer and investor.' ], $output);
+        $this->assertSame([ 'review' => 'Combine customer and investor.' ], $result->output);
+        $this->assertSame(expected: 'customer_story', actual: $result->history[ 0 ][ 'agent' ]);
         $this->assertSame([ 'customer_story', 'investor_story', 'review' ], $runner->agentNames());
     }
 
@@ -36,7 +65,7 @@ final class WorkflowTest extends TestCase
             'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ],
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/simple_loop.wire')
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/simple_loop.wire')
             ->withSecrets([
                 'api_key' => 'test-key',
                 'endpoint' => 'http://example.test/v1',
@@ -44,7 +73,7 @@ final class WorkflowTest extends TestCase
             ])
             ->run();
 
-        $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $output);
+        $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $result->output);
         $this->assertSame('Please spell out the number: 1 in lowercase.', $runner->invocation(1)->prompt);
         $this->assertSame('test-model', $runner->invocation(1)->model);
         $this->assertSame('test-key', $runner->invocation(1)->providerConfig[ 'api_key' ]);
@@ -62,7 +91,7 @@ final class WorkflowTest extends TestCase
             ],
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/interpolation_chain.wire')
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/interpolation_chain.wire')
             ->withInputs([
                 'product_name' => 'Superwire',
                 'audience' => 'developers',
@@ -74,7 +103,7 @@ final class WorkflowTest extends TestCase
                 'body' => 'Write a launch note for developers about Summarize Superwire for developers. with tagline Ship it.',
                 'summary' => 'Summarize Superwire for developers.',
             ],
-            actual: $output,
+            actual: $result->output,
         );
     }
 
@@ -102,13 +131,13 @@ final class WorkflowTest extends TestCase
             },
         ]);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
             ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
             ->run();
 
         $this->assertSame(
             expected: [ 'weather' => 'sunny' ],
-            actual: $output,
+            actual: $result->output,
         );
     }
 
@@ -121,11 +150,11 @@ final class WorkflowTest extends TestCase
 
         app()->instance(AgentRunner::class, $runner);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
             ->usingStreamMode()
             ->run();
 
-        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $output);
+        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $result->output);
         $this->assertSame(expected: 'greeting', actual: $runner->streamInvocation?->agent->name);
     }
 
@@ -140,11 +169,37 @@ final class WorkflowTest extends TestCase
 
         app()->instance(AgentRunner::class, $runner);
 
-        $output = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
             ->usingRequestMode()
             ->run();
 
-        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $output);
+        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $result->output);
         $this->assertNull(actual: $runner->streamInvocation);
+    }
+
+    public function test_it_can_run_workflow_using_parallel_executor(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            $this->markTestSkipped('PCNTL is required for parallel workflow execution.');
+        }
+
+        FakeAgentRunner::fake([
+            'customer_story' => 'customer',
+            'investor_story' => 'investor',
+            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        ]);
+
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
+            ->parallel()
+            ->run();
+
+        $this->assertSame(expected: [ 'review' => 'Combine customer and investor.' ], actual: $result->output);
+    }
+
+    public function test_it_can_select_parallel_executor_from_config(): void
+    {
+        config()->set('superwire.runtime.executor', 'parallel');
+
+        $this->assertInstanceOf(expected: ParallelWorkflowExecutor::class, actual: app(\Superwire\Laravel\Contracts\WorkflowExecutor::class));
     }
 }

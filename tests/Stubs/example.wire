@@ -16,7 +16,10 @@ agent lister {
 agent counter for item in agent.lister.numbers {
     model: openai("qwen/qwen3.6-27b")
     prompt: "spell out the number: {{ item }} in lowercase."
-    output: string
+    output: {
+        number: number,
+        number_string: string
+    }
 }
 
 output {

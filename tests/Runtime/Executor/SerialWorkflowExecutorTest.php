@@ -7,6 +7,8 @@ namespace Superwire\Laravel\Tests\Runtime\Executor;
 use InvalidArgumentException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
+use Superwire\Laravel\Enums\AgentMode;
+use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
@@ -153,12 +155,12 @@ final class SerialWorkflowExecutorTest extends TestCase
 
                 return $listerCalls === 1 ? [] : [ 'numbers' => [ 1, 2, 3, 4, 5 ] ];
             },
-            'counter' => fn (AgentInvocation $invocation): string => match ((int) $invocation->iterationValue) {
-                1 => 'one',
-                2 => 'two',
-                3 => 'three',
-                4 => 'four',
-                5 => 'five',
+            'counter' => fn (AgentInvocation $invocation): array => match ((int) $invocation->iterationValue) {
+                1 => [ 'number' => 1, 'number_string' => 'one' ],
+                2 => [ 'number' => 2, 'number_string' => 'two' ],
+                3 => [ 'number' => 3, 'number_string' => 'three' ],
+                4 => [ 'number' => 4, 'number_string' => 'four' ],
+                5 => [ 'number' => 5, 'number_string' => 'five' ],
             },
         ]);
 
@@ -168,7 +170,15 @@ final class SerialWorkflowExecutorTest extends TestCase
             definition: $this->workflowDefinition(fixture: 'example.wire'),
         );
 
-        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three', 'four', 'five' ] ], actual: $result->output);
+        $this->assertSame(expected: [
+            'numbers' => [
+                [ 'number' => 1, 'number_string' => 'one' ],
+                [ 'number' => 2, 'number_string' => 'two' ],
+                [ 'number' => 3, 'number_string' => 'three' ],
+                [ 'number' => 4, 'number_string' => 'four' ],
+                [ 'number' => 5, 'number_string' => 'five' ],
+            ],
+        ], actual: $result->output);
         $this->assertSame(expected: [ 'lister', 'lister', 'counter', 'counter', 'counter', 'counter', 'counter' ], actual: $runner->agentNames());
         $this->assertStringContainsString(needle: 'Validation error: Agent `lister` returned output that cannot be parsed as an object.', haystack: $runner->invocation(1)->prompt);
         $this->assertStringContainsString(needle: 'Previous response: []', haystack: $runner->invocation(1)->prompt);
@@ -308,11 +318,39 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $result = $executor->execute(
             definition: $this->workflowDefinition(fixture: 'greeting.wire'),
-            agentMode: 'request',
+            agentMode: AgentMode::Request,
         );
 
         $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $result->output);
         $this->assertNull(actual: $runner->streamInvocation);
+    }
+
+    public function test_it_passes_configured_output_strategy_to_agent_invocations(): void
+    {
+        config()->set('superwire.runtime.output_strategy', 'structured');
+
+        $runner = FakeAgentRunner::fake([ 'greeting' => 'Hello' ]);
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $result = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'greeting.wire'),
+            outputStrategy: OutputStrategy::ToolCalling,
+        );
+
+        $this->assertSame(expected: [ 'greeting' => 'Hello' ], actual: $result->output);
+        $this->assertSame(expected: OutputStrategy::ToolCalling, actual: $runner->invocation(0)->outputStrategy);
+    }
+
+    public function test_it_uses_output_strategy_from_config(): void
+    {
+        config()->set('superwire.runtime.output_strategy', 'tool_calling');
+
+        $runner = FakeAgentRunner::fake([ 'greeting' => 'Hello' ]);
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $executor->execute(definition: $this->workflowDefinition(fixture: 'greeting.wire'));
+
+        $this->assertSame(expected: OutputStrategy::ToolCalling, actual: $runner->invocation(0)->outputStrategy);
     }
 
     public function test_it_rejects_stream_agent_mode_when_runner_does_not_support_streaming(): void
@@ -325,7 +363,7 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $executor->execute(
             definition: $this->workflowDefinition(fixture: 'greeting.wire'),
-            agentMode: 'stream',
+            agentMode: AgentMode::Stream,
         );
     }
 
