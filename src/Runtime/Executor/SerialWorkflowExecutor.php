@@ -74,7 +74,7 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
         $output = $this->agentRunner->run(new AgentInvocation(
             agent: $agent,
             provider: $provider,
-            model: $agent->model->isReference() ? $resolver->resolve($agent->model->reference) : $agent->model->name,
+            model: $this->resolveModel(agent: $agent, resolver: $resolver),
             prompt: $this->promptRenderer->render($agent->prompt, $resolver),
             providerConfig: $this->resolveValue($provider->config, $resolver),
             inputs: $inputs,
@@ -170,6 +170,19 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             callback: fn (string | array $child) => $this->resolveValue($child, $resolver),
             array: $value,
         );
+    }
+
+    private function resolveModel(Agent $agent, ReferenceResolver $resolver): string
+    {
+        $model = $agent->model->isReference()
+            ? $resolver->resolve(reference: $agent->model->reference)
+            : $agent->model->name;
+
+        if (!is_string($model) || $model === '') {
+            throw new InvalidArgumentException(sprintf('Agent `%s` model must resolve to a non-empty string.', $agent->name));
+        }
+
+        return $model;
     }
 
     private function normalize(array | string | object $value): array | string

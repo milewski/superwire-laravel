@@ -18,7 +18,7 @@ final readonly class AgentInvocation
     public function __construct(
         public Agent $agent,
         public Provider $provider,
-        public mixed $model,
+        public string $model,
         public string $prompt,
         public array $providerConfig,
         public array $inputs,

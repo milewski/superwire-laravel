@@ -10,7 +10,7 @@ use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\WorkflowCompiler as WorkflowCompilerInterface;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
-use Superwire\Laravel\Runtime\MissingAgentRunner;
+use Superwire\Laravel\Runtime\Runner\LaravelAiAgentRunner;
 use Superwire\Laravel\Runtime\WorkflowCompiler;
 
 final class SuperwireLaravelServiceProvider extends ServiceProvider
@@ -19,7 +19,7 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/superwire.php', 'superwire');
 
-        $this->app->bind(AgentRunner::class, MissingAgentRunner::class);
+        $this->app->bind(AgentRunner::class, LaravelAiAgentRunner::class);
 
         $this->app->bind(WorkflowCompilerInterface::class, function (): WorkflowCompilerInterface {
             return new WorkflowCompiler((string) config('superwire.cli.path'));

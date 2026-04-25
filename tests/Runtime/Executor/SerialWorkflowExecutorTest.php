@@ -158,6 +158,25 @@ final class SerialWorkflowExecutorTest extends TestCase
         );
     }
 
+    public function test_it_rejects_models_that_resolve_to_non_string_values(): void
+    {
+        $runner = FakeAgentRunner::fake([
+            'greeting' => 'unused',
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Agent `greeting` model must resolve to a non-empty string.');
+
+        $executor->execute(
+            definition: $this->workflowDefinitionWithModelReference(fixture: 'greeting.wire'),
+            inputs: [
+                'model' => [ 'test-model' ],
+            ],
+        );
+    }
+
     private function workflowDefinition(string $fixture): WorkflowDefinition
     {
         return app(WorkflowCompiler::class)->compile(
@@ -173,6 +192,41 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $payload = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         $payload[ 'execution' ][ 'batches' ] = $batches;
+
+        return WorkflowDefinition::fromArray(payload: $payload);
+    }
+
+    private function workflowDefinitionWithModelReference(string $fixture): WorkflowDefinition
+    {
+        $json = app(WorkflowCompiler::class)->compileToJson(
+            workflowPath: __DIR__ . '/../../Stubs/' . $fixture,
+        );
+
+        $payload = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        $payload[ 'input' ] = [
+            'workflow_type' => [
+                'kind' => 'object',
+                'fields' => [
+                    'model' => [
+                        'kind' => 'array',
+                        'item_type' => [ 'kind' => 'string' ],
+                        'fixed_length' => null,
+                    ],
+                ],
+            ],
+            'json_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'model' => [
+                        'type' => 'array',
+                        'items' => [ 'type' => 'string' ],
+                    ],
+                ],
+                'required' => [ 'model' ],
+                'additionalProperties' => false,
+            ],
+        ];
+        $payload[ 'agents' ][ 0 ][ 'model' ] = [ '$ref' => 'input.model' ];
 
         return WorkflowDefinition::fromArray(payload: $payload);
     }
