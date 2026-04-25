@@ -9,7 +9,7 @@ use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Workflow;
 
-final class WorkflowExecutorTest extends TestCase
+final class WorkflowTest extends TestCase
 {
     public function test_it_executes_batches_and_resolves_agent_references(): void
     {
