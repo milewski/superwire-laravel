@@ -140,6 +140,60 @@ final class SerialWorkflowExecutorTest extends TestCase
         );
     }
 
+    public function test_it_retries_agent_outputs_that_fail_parsing(): void
+    {
+        config()->set('superwire.runtime.max_agent_request_attempts', 3);
+
+        $listerCalls = 0;
+        $runner = FakeAgentRunner::fake([
+            'lister' => function () use (&$listerCalls): array {
+                $listerCalls++;
+
+                return $listerCalls === 1 ? [] : [ 'numbers' => [ 1, 2, 3, 4, 5 ] ];
+            },
+            'counter' => fn (AgentInvocation $invocation): string => match ((int) $invocation->iterationValue) {
+                1 => 'one',
+                2 => 'two',
+                3 => 'three',
+                4 => 'four',
+                5 => 'five',
+            },
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $output = $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'example.wire'),
+        );
+
+        $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three', 'four', 'five' ] ], actual: $output);
+        $this->assertSame(expected: [ 'lister', 'lister', 'counter', 'counter', 'counter', 'counter', 'counter' ], actual: $runner->agentNames());
+        $this->assertStringContainsString(needle: 'Validation error: Agent `lister` returned output that cannot be parsed as an object.', haystack: $runner->invocation(1)->prompt);
+        $this->assertStringContainsString(needle: 'Previous response: []', haystack: $runner->invocation(1)->prompt);
+    }
+
+    public function test_it_stops_retrying_agent_outputs_after_configured_attempts(): void
+    {
+        config()->set('superwire.runtime.max_agent_request_attempts', 2);
+
+        $runner = FakeAgentRunner::fake([
+            'lister' => [],
+        ]);
+
+        $executor = new SerialWorkflowExecutor($runner);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Agent `lister` returned output that cannot be parsed as an object.');
+
+        try {
+            $executor->execute(
+                definition: $this->workflowDefinition(fixture: 'example.wire'),
+            );
+        } finally {
+            $this->assertSame(expected: [ 'lister', 'lister' ], actual: $runner->agentNames());
+        }
+    }
+
     public function test_it_rejects_execution_batches_that_run_before_their_dependencies(): void
     {
         $runner = FakeAgentRunner::fake([

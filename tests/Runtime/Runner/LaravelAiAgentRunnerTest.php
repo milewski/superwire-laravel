@@ -4,10 +4,12 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Runtime\Runner;
 
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Contracts\Gateway\TextGateway;
 use Laravel\Ai\Contracts\Providers\TextProvider;
+use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
@@ -107,6 +109,18 @@ final class LaravelAiAgentRunnerTest extends TestCase
         );
 
         $this->assertInstanceOf(StructuredAnonymousAgent::class, $provider->prompt->agent);
+
+        $schema = $provider->prompt->agent->schema(new JsonSchemaTypeFactory());
+
+        $this->assertArrayHasKey(key: 'summary', array: $schema);
+        $this->assertArrayHasKey(key: 'tagline', array: $schema);
+        $objectSchema = new ObjectSchema($schema)->toSchema();
+
+        $this->assertSame(expected: 'object', actual: $objectSchema[ 'type' ]);
+        $this->assertFalse(condition: $objectSchema[ 'additionalProperties' ]);
+        $this->assertSame(expected: [ 'summary', 'tagline' ], actual: $objectSchema[ 'required' ]);
+        $this->assertSame(expected: [ 'type' => 'string' ], actual: $objectSchema[ 'properties' ][ 'summary' ]);
+        $this->assertSame(expected: [ 'type' => 'string' ], actual: $objectSchema[ 'properties' ][ 'tagline' ]);
     }
 
     public function test_it_returns_raw_text_for_non_object_outputs(): void

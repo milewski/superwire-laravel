@@ -9,6 +9,7 @@ use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Agent\Agent;
+use Superwire\Laravel\Data\Agent\OutputField;
 use Superwire\Laravel\Data\Agent\OutputFieldReference;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Runtime\AgentInvocation;
@@ -104,13 +105,82 @@ final readonly class SerialWorkflowExecutor implements WorkflowExecutor
             iterationValue: $iterationValue,
         );
 
-        $output = $this->runInvocation(invocation: $invocation, agentMode: $agentMode);
-
-        return $this->outputParser->parse(
-            output: $output,
+        return $this->runInvocationWithRetries(
+            invocation: $invocation,
+            agentMode: $agentMode,
             field: $agent->runsForEach() ? $agent->output->iteration : $agent->output->finalOutput,
-            agent: $agent,
         );
+    }
+
+    private function runInvocationWithRetries(AgentInvocation $invocation, string $agentMode, OutputField $field): mixed
+    {
+        $attempts = max(1, (int) config('superwire.runtime.max_agent_request_attempts', 10));
+        $currentInvocation = $invocation;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+
+            $output = $this->runInvocation(invocation: $currentInvocation, agentMode: $agentMode);
+
+            try {
+
+                $parsed = $this->outputParser->parse(output: $output, field: $field, agent: $invocation->agent);
+
+                JsonSchemaFactory::validate(
+                    schema: $field->jsonSchema,
+                    value: $parsed,
+                    name: sprintf('agent `%s` output', $invocation->agent->name),
+                );
+
+                return $parsed;
+
+            } catch (InvalidArgumentException $exception) {
+
+                if ($attempt === $attempts) {
+                    throw $exception;
+                }
+
+                $currentInvocation = $this->retryInvocation(
+                    invocation: $invocation,
+                    error: $exception,
+                    previousOutput: $output,
+                );
+
+            }
+
+        }
+
+        throw new InvalidArgumentException(sprintf('Agent `%s` failed to produce a valid output.', $invocation->agent->name));
+    }
+
+    private function retryInvocation(AgentInvocation $invocation, InvalidArgumentException $error, string | array | null $previousOutput): AgentInvocation
+    {
+        return new AgentInvocation(
+            agent: $invocation->agent,
+            provider: $invocation->provider,
+            model: $invocation->model,
+            prompt: $this->retryPrompt(prompt: $invocation->prompt, error: $error, previousOutput: $previousOutput),
+            providerConfig: $invocation->providerConfig,
+            inputs: $invocation->inputs,
+            secrets: $invocation->secrets,
+            agentOutputs: $invocation->agentOutputs,
+            tools: $invocation->tools,
+            iterationIdentifier: $invocation->iterationIdentifier,
+            iterationValue: $invocation->iterationValue,
+        );
+    }
+
+    private function retryPrompt(string $prompt, InvalidArgumentException $error, string | array | null $previousOutput): string
+    {
+        $encodedOutput = is_array($previousOutput)
+            ? json_encode($previousOutput, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            : $previousOutput;
+
+        return trim($prompt) . PHP_EOL . PHP_EOL . implode(PHP_EOL, [
+            'The previous response did not match the declared Superwire output schema.',
+            'Validation error: ' . $error->getMessage(),
+            'Previous response: ' . ($encodedOutput ?? '[unavailable]'),
+            'Try again. Return only the requested final answer in the exact declared output shape.',
+        ]);
     }
 
     private function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, string $agentMode): array
