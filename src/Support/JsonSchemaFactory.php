@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Support;
 
 use InvalidArgumentException;
-use Swaggest\JsonSchema\Exception\InvalidValue;
+use Swaggest\JsonSchema\InvalidValue;
 use Swaggest\JsonSchema\Schema;
 use Throwable;
 
@@ -15,7 +15,6 @@ final class JsonSchemaFactory
     {
         try {
 
-            /** @var Schema $schema */
             return Schema::import(self::toObject(self::normalizeDefinition(value: $definition)));
 
         } catch (Throwable $exception) {
@@ -42,9 +41,6 @@ final class JsonSchemaFactory
         }
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public static function toArray(Schema $schema): array
     {
         $json = json_encode($schema, JSON_THROW_ON_ERROR);
