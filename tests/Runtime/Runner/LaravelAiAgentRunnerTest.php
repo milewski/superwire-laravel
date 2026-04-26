@@ -7,11 +7,12 @@ namespace Superwire\Laravel\Tests\Runtime\Runner;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\AnonymousAgent;
+use Laravel\Ai\Contracts\Gateway\TextGateway;
 use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Contracts\HasStructuredOutput;
-use Laravel\Ai\Contracts\Gateway\TextGateway;
 use Laravel\Ai\Contracts\Providers\TextProvider;
 use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Prompts\AgentPrompt;
@@ -146,14 +147,14 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 'id' => 'response-1',
                 'model' => 'test-model',
                 'status' => 'completed',
-                'output' => [[
+                'output' => [ [
                     'type' => 'message',
                     'status' => 'completed',
-                    'content' => [[
+                    'content' => [ [
                         'type' => 'output_text',
                         'text' => json_encode([ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ]),
-                    ]],
-                ]],
+                    ] ],
+                ] ],
                 'usage' => [
                     'input_tokens' => 1,
                     'output_tokens' => 1,
@@ -177,6 +178,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         $this->assertSame(expected: [ 'summary' => 'Superwire summary', 'tagline' => 'Ship it' ], actual: $result->output);
 
         Http::assertSent(function ($request): bool {
+
             $body = $request->data();
 
             return str_ends_with($request->url(), '/responses')
@@ -184,6 +186,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 && ($body[ 'text' ][ 'format' ][ 'strict' ] ?? null) === true
                 && ($body[ 'reasoning' ][ 'effort' ] ?? null) === 'none'
                 && array_key_exists('summary', $body[ 'text' ][ 'format' ][ 'schema' ][ 'properties' ] ?? []);
+
         });
     }
 
@@ -247,6 +250,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
         );
 
         try {
+
             $runner->run(invocation: $this->invocation(
                 prompt: 'Summarize Superwire.',
                 model: 'test-model',
@@ -254,7 +258,8 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 wire: $this->wireWithOutput(output: "{ summary: string\n tagline: string }"),
                 outputStrategy: OutputStrategy::ToolCalling,
             ));
-        } catch (\InvalidArgumentException) {
+
+        } catch (InvalidArgumentException) {
         }
 
         $result = $provider->prompt->agent->tools()[ 0 ]->handle(new Request([ 'summary' => 'Only summary' ]));
@@ -292,7 +297,7 @@ final class LaravelAiAgentRunnerTest extends TestCase
             config: $this->app[ 'config' ],
         );
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Agent aborted output: Insufficient information.');
 
         $runner->run(
@@ -467,19 +472,18 @@ final class LaravelAiAgentRunnerTest extends TestCase
                 api_key: "test-key"
                 models: ["test-model"]
             }
-            
+
             agent greeting {
                 model: openai("test-model")
                 prompt: "Write a short welcome message."
                 output: $output
             }
-            
+
             output {
                 greeting: agent.greeting
             }
         WIRE;
     }
-
 }
 
 final class RecordingAiManager extends AiManager
@@ -505,7 +509,7 @@ final class RecordingTextProvider implements TextProvider
     public ?AgentPrompt $streamPrompt = null;
 
     public function __construct(
-        private readonly AgentResponse | StructuredAgentResponse $response,
+        private readonly AgentResponse|StructuredAgentResponse $response,
         private readonly ?StreamableAgentResponse $streamResponse = null,
     )
     {

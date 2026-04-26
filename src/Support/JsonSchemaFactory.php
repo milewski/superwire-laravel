@@ -14,23 +14,31 @@ final class JsonSchemaFactory
     public static function fromArray(array $definition, string $name): Schema
     {
         try {
-            /** @var Schema $schema */
-            $schema = Schema::import(self::toObject(self::normalizeDefinition(value: $definition)));
 
-            return $schema;
+            /** @var Schema $schema */
+            return Schema::import(self::toObject(self::normalizeDefinition(value: $definition)));
+
         } catch (Throwable $exception) {
+
             throw new InvalidArgumentException(sprintf('Invalid JSON schema for %s: %s', $name, $exception->getMessage()), previous: $exception);
+
         }
     }
 
     public static function validate(Schema $schema, mixed $value, string $name): void
     {
         try {
+
             $schema->in(self::toObject($value));
+
         } catch (InvalidValue $exception) {
+
             throw new InvalidArgumentException(sprintf('Invalid %s: %s', $name, $exception->getMessage()), previous: $exception);
+
         } catch (Throwable $exception) {
+
             throw new InvalidArgumentException(sprintf('Invalid %s: %s', $name, $exception->getMessage()), previous: $exception);
+
         }
     }
 
@@ -65,10 +73,12 @@ final class JsonSchemaFactory
         $normalized = [];
 
         foreach ($value as $childKey => $childValue) {
+
             $normalized[ $childKey ] = self::normalizeDefinition(
                 value: $childValue,
                 key: is_string($childKey) ? $childKey : null,
             );
+
         }
 
         if ($key === 'properties' && $normalized === []) {

@@ -30,15 +30,19 @@ final readonly class OutputSuccessTool implements Tool
         $output = $this->field->isObject() ? $request->all() : ($request->all()[ 'value' ] ?? null);
 
         try {
+
             JsonSchemaFactory::validate(
                 schema: $this->field->jsonSchema,
                 value: $output,
                 name: 'agent output tool input',
             );
+
         } catch (InvalidArgumentException $exception) {
+
             return json_encode([
                 'error' => $exception->getMessage(),
             ], JSON_THROW_ON_ERROR);
+
         }
 
         return json_encode([

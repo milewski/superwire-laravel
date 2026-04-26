@@ -28,9 +28,10 @@ final readonly class ToolCallingStrategy
         );
     }
 
-    public function output(mixed $response): array | string
+    public function output(mixed $response): array|string
     {
         foreach (array_reverse($response->toolResults->all()) as $toolResult) {
+
             if (!in_array($toolResult->name, [ 'OutputSuccessTool', 'OutputAbortTool' ], true)) {
                 continue;
             }
@@ -46,10 +47,13 @@ final readonly class ToolCallingStrategy
             }
 
             if (($result[ 'superwire_output_success' ] ?? false) === true) {
+
                 $output = $result[ 'output' ] ?? [];
 
                 return is_array($output) ? $output : (string) $output;
+
             }
+
         }
 
         throw new InvalidArgumentException('Agent did not call the required output tool.');

@@ -33,13 +33,13 @@ final class PromptRendererTest extends TestCase
                             api_key: "test-key"
                             models: ["test-model"]
                         }
-                        
+
                         agent greeting {
                             model: openai("test-model")
                             prompt: "Write a short welcome message."
                             output: string
                         }
-                        
+
                         output {
                             greeting: agent.greeting
                         }
@@ -71,18 +71,18 @@ final class PromptRendererTest extends TestCase
                     api_key: "test-key"
                     models: ["test-model"]
                 }
-                
+
                 input {
                     product_name: string
                     audience: string
                 }
-                
+
                 agent summary {
                     model: openai("test-model")
                     prompt: "Summarize {{ input.product_name }} for {{ input.audience }}."
                     output: string
                 }
-                
+
                 output {
                     summary: agent.summary
                 }
@@ -117,7 +117,7 @@ final class PromptRendererTest extends TestCase
                 api_key: "test-key"
                 models: ["test-model"]
             }
-            
+
             agent summary {
                 model: openai("test-model")
                 prompt: "Return points."
@@ -125,13 +125,13 @@ final class PromptRendererTest extends TestCase
                     points: [string]
                 }
             }
-            
+
             agent consumer {
                 model: openai("test-model")
                 prompt: "Use these points: {{ agent.summary.points }}"
                 output: string
             }
-            
+
             output {
                 consumer: agent.consumer
             }
@@ -162,17 +162,17 @@ final class PromptRendererTest extends TestCase
                     api_key: "test-key"
                     models: ["test-model"]
                 }
-                
+
                 input {
                     suffix: string
                 }
-                
+
                 agent value {
                     model: openai("test-model")
                     prompt: "Value:{{ input.suffix }}"
                     output: string
                 }
-                
+
                 output {
                     value: agent.value
                 }
@@ -187,7 +187,7 @@ final class PromptRendererTest extends TestCase
 
     private function compilePromptFromWire(string $agentName, string $wire): Prompt
     {
-        $workflowPath = sprintf("%s/superwire-prompt-renderer-%s.wire", sys_get_temp_dir(), uniqid(more_entropy: true));
+        $workflowPath = sprintf('%s/superwire-prompt-renderer-%s.wire', sys_get_temp_dir(), uniqid(more_entropy: true));
 
         file_put_contents(filename: $workflowPath, data: $wire);
 

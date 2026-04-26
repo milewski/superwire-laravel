@@ -8,10 +8,10 @@ use InvalidArgumentException;
 use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Runtime\Tool\ToolInvoker;
 use Superwire\Laravel\Runtime\Tool\ToolRegistry;
-use Superwire\Laravel\Tools\AbstractTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\SearchTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\TypedSearchTool;
 use Superwire\Laravel\Tests\TestCase;
+use Superwire\Laravel\Tools\AbstractTool;
 
 final class ToolInvokerTest extends TestCase
 {
@@ -76,7 +76,7 @@ final class ToolInvokerTest extends TestCase
 
     public function test_it_validates_empty_object_tool_inputs(): void
     {
-        $tool = new class extends AbstractTool {
+        $tool = new class () extends AbstractTool {
             public function handle(array $input, array $bounded): array
             {
                 return [ 'input' => $input, 'bounded' => $bounded ];

@@ -150,9 +150,11 @@ final class SerialWorkflowExecutorTest extends TestCase
         $listerCalls = 0;
         $runner = FakeAgentRunner::fake([
             'lister' => function () use (&$listerCalls): array {
+
                 $listerCalls++;
 
                 return $listerCalls === 1 ? [] : [ 'numbers' => [ 1, 2, 3, 4, 5 ] ];
+
             },
             'counter' => fn (AgentInvocation $invocation): array => match ((int) $invocation->iterationValue) {
                 1 => [ 'number' => 1, 'number_string' => 'one' ],
@@ -188,9 +190,11 @@ final class SerialWorkflowExecutorTest extends TestCase
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2, 3 ],
             'speller' => function (AgentInvocation $invocation): string {
+
                 usleep(250_000);
 
                 return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+
             },
         ]);
 
@@ -215,14 +219,13 @@ final class SerialWorkflowExecutorTest extends TestCase
 
     public function test_it_does_not_purge_database_connections_for_for_each_iterations(): void
     {
-        $database = new class {
-
+        $database = new class () {
             public int $purges = 0;
 
             public function getConnections(): array
             {
                 return [
-                    'default' => new class {
+                    'default' => new class () {
                     },
                 ];
             }
@@ -270,9 +273,11 @@ final class SerialWorkflowExecutorTest extends TestCase
         $this->expectExceptionMessage('Agent `lister` returned output that cannot be parsed as an object.');
 
         try {
+
             $executor->execute(
                 definition: $this->workflowDefinition(fixture: 'example.wire'),
             );
+
         } finally {
             $this->assertSame(expected: [ 'lister', 'lister' ], actual: $runner->agentNames());
         }

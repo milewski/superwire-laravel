@@ -20,13 +20,21 @@ trait ResetsDatabaseConnectionsForForks
         $database = $this->databaseManager();
 
         if ($database !== null && method_exists($database, 'purge')) {
+
             foreach ($this->databaseConnectionNames($database) as $name) {
+
                 try {
+
                     $database->purge($name);
+
                 } catch (Throwable) {
+
                     // Database cleanup must not mask the forked task's real failure.
+
                 }
+
             }
+
         }
 
         return null;
@@ -39,9 +47,13 @@ trait ResetsDatabaseConnectionsForForks
         }
 
         try {
+
             $names = array_keys($database->getConnections());
+
         } catch (Throwable) {
+
             return [ null ];
+
         }
 
         return $names === [] ? [ null ] : $names;
@@ -54,6 +66,7 @@ trait ResetsDatabaseConnectionsForForks
         }
 
         try {
+
             $app = app();
 
             if (method_exists($app, 'bound') && !$app->bound('db')) {
@@ -61,8 +74,11 @@ trait ResetsDatabaseConnectionsForForks
             }
 
             return app('db');
+
         } catch (Throwable) {
+
             return null;
+
         }
     }
 }

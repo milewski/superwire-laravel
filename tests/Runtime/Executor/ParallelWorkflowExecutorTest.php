@@ -23,14 +23,18 @@ final class ParallelWorkflowExecutorTest extends TestCase
 
         $runner = FakeAgentRunner::fake([
             'customer_story' => function (): string {
+
                 usleep(250_000);
 
                 return 'customer';
+
             },
             'investor_story' => function (): string {
+
                 usleep(250_000);
 
                 return 'investor';
+
             },
             'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
         ]);
@@ -59,14 +63,18 @@ final class ParallelWorkflowExecutorTest extends TestCase
 
         $runner = FakeAgentRunner::fake([
             'customer_story' => function (): string {
+
                 usleep(200_000);
 
                 return 'customer';
+
             },
             'investor_story' => function (): string {
+
                 usleep(200_000);
 
                 return 'investor';
+
             },
             'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
         ]);
@@ -90,9 +98,11 @@ final class ParallelWorkflowExecutorTest extends TestCase
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2, 3 ],
             'speller' => function (AgentInvocation $invocation): string {
+
                 usleep(200_000);
 
                 return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+
             },
         ]);
 
@@ -142,7 +152,7 @@ final class ParallelWorkflowExecutorTest extends TestCase
             'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
         ]);
 
-        $executor = new readonly class($runner) extends ParallelWorkflowExecutor {
+        $executor = new readonly class ($runner) extends ParallelWorkflowExecutor {
             protected function runForkedTasks(array $tasks, string $context): array
             {
                 return [ '' ];
@@ -162,7 +172,7 @@ final class ParallelWorkflowExecutorTest extends TestCase
             'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two' ][ (int) $invocation->iterationValue - 1 ],
         ]);
 
-        $executor = new readonly class($runner) extends ParallelWorkflowExecutor {
+        $executor = new readonly class ($runner) extends ParallelWorkflowExecutor {
             protected function runForkedTasks(array $tasks, string $context): array
             {
                 if (str_contains($context, 'for_each')) {

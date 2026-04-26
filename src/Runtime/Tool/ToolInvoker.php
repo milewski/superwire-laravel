@@ -20,7 +20,7 @@ final readonly class ToolInvoker
         );
     }
 
-    private function validationArguments(array $arguments, array $schemaDefinition): array | object
+    private function validationArguments(array $arguments, array $schemaDefinition): array|object
     {
         if ($arguments === [] && ($schemaDefinition[ 'type' ] ?? null) === 'object') {
             return (object) [];

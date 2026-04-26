@@ -50,15 +50,19 @@ final readonly class ReferenceResolver
         foreach ($segments as $segment) {
 
             if (is_array($value) && array_key_exists($segment, $value)) {
+
                 $value = $value[ $segment ];
 
                 continue;
+
             }
 
             if (is_object($value) && property_exists($value, $segment)) {
+
                 $value = $value->{$segment};
 
                 continue;
+
             }
 
             throw new InvalidArgumentException(sprintf('Unable to resolve workflow reference `%s`.', $reference));

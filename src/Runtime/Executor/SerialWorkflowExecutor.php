@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
-use TypeError;
+use Laravel\Ai\Streaming\Events\TextDelta;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
@@ -20,12 +20,12 @@ use Superwire\Laravel\Runtime\AgentRunResult;
 use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
-use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
+use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Support\JsonSchemaFactory;
 use Superwire\Laravel\Tools\AbstractTool;
-use Laravel\Ai\Streaming\Events\TextDelta;
+use TypeError;
 
 readonly class SerialWorkflowExecutor implements WorkflowExecutor
 {
@@ -155,7 +155,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                     'history' => $history,
                 ];
 
-            } catch (InvalidArgumentException | TypeError $exception) {
+            } catch (InvalidArgumentException|TypeError $exception) {
 
                 if ($attempt === $attempts) {
                     throw $exception;
@@ -174,7 +174,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         throw new InvalidArgumentException(sprintf('Agent `%s` failed to produce a valid output.', $invocation->agent->name));
     }
 
-    protected function retryInvocation(AgentInvocation $invocation, InvalidArgumentException | TypeError $error, string | array | null $previousOutput): AgentInvocation
+    protected function retryInvocation(AgentInvocation $invocation, InvalidArgumentException|TypeError $error, string|array|null $previousOutput): AgentInvocation
     {
         return new AgentInvocation(
             agent: $invocation->agent,
@@ -192,7 +192,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    protected function retryPrompt(string $prompt, InvalidArgumentException | TypeError $error, string | array | null $previousOutput): string
+    protected function retryPrompt(string $prompt, InvalidArgumentException|TypeError $error, string|array|null $previousOutput): string
     {
         $encodedOutput = is_array($previousOutput)
             ? json_encode($previousOutput, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
@@ -299,9 +299,11 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
     protected function assertDependenciesResolved(Agent $agent, array $agentOutputs): void
     {
         foreach ($agent->dependencies as $dependency) {
+
             if (!array_key_exists($dependency, $agentOutputs)) {
                 throw new InvalidArgumentException(sprintf('Agent `%s` dependency `%s` has not been resolved.', $agent->name, $dependency));
             }
+
         }
     }
 
@@ -378,7 +380,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $output;
     }
 
-    protected function resolveValue(string | array $value, ReferenceResolver $resolver): mixed
+    protected function resolveValue(string|array $value, ReferenceResolver $resolver): mixed
     {
         if (is_array($value) && count($value) === 1 && isset($value[ '$ref' ]) && is_string($value[ '$ref' ])) {
             return $resolver->resolve($value[ '$ref' ]);
@@ -389,7 +391,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
 
         return array_map(
-            callback: fn (string | array $child) => $this->resolveValue($child, $resolver),
+            callback: fn (string|array $child) => $this->resolveValue($child, $resolver),
             array: $value,
         );
     }

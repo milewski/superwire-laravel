@@ -76,7 +76,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         );
     }
 
-    private function strategy(AgentInvocation $invocation): StructuredOutputStrategy | ToolCallingStrategy
+    private function strategy(AgentInvocation $invocation): StructuredOutputStrategy|ToolCallingStrategy
     {
         return match ($invocation->outputStrategy) {
             OutputStrategy::Structured => new StructuredOutputStrategy(),
@@ -92,12 +92,12 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         );
     }
 
-    private function responseHistory(AgentInvocation $invocation, mixed $response, array | string $output): array
+    private function responseHistory(AgentInvocation $invocation, mixed $response, array|string $output): array
     {
-        $history = [[
+        $history = [ [
             'role' => 'user',
             'content' => $invocation->prompt,
-        ]];
+        ] ];
 
         foreach ($response->steps as $step) {
 
@@ -113,7 +113,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
 
         }
 
-        if ($history === [[ 'role' => 'user', 'content' => $invocation->prompt ]]) {
+        if ($history === [ [ 'role' => 'user', 'content' => $invocation->prompt ] ]) {
 
             foreach ($response->messages as $message) {
                 $history[] = $this->messageHistoryEntry(message: $message);

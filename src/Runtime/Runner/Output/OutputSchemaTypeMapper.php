@@ -16,11 +16,13 @@ final readonly class OutputSchemaTypeMapper
         $schemaFields = [];
 
         foreach ($fields as $name => $fieldType) {
+
             if (!is_string($name) || !is_array($fieldType)) {
                 continue;
             }
 
             $schemaFields[ $name ] = $this->schemaType(field: OutputField::fromWorkflowType($fieldType), schema: $schema)->required();
+
         }
 
         return $schemaFields;

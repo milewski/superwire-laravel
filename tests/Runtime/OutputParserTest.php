@@ -55,7 +55,7 @@ final class OutputParserTest extends TestCase
     {
         $this->assertSame(
             expected: [ 'message' => 'hello' ],
-            actual: $this->parse(output: '{ "message": "hello" }', outputType: "{ message: string }"),
+            actual: $this->parse(output: '{ "message": "hello" }', outputType: '{ message: string }'),
         );
     }
 
@@ -172,7 +172,7 @@ final class OutputParserTest extends TestCase
     {
         $this->assertSame(
             expected: [ 'message' => 'hello' ],
-            actual: $this->parse(output: [ 'message' => 'hello' ], outputType: "{ message: string }"),
+            actual: $this->parse(output: [ 'message' => 'hello' ], outputType: '{ message: string }'),
         );
     }
 
@@ -184,7 +184,7 @@ final class OutputParserTest extends TestCase
         $this->parse(output: 'not a number', outputType: 'number');
     }
 
-    private function parse(string | array $output, string $outputType): array | string | int | float | bool | null
+    private function parse(string|array $output, string $outputType): array|string|int|float|bool|null
     {
         $agent = $this->agent(outputType: $outputType);
 
@@ -258,13 +258,13 @@ final class OutputParserTest extends TestCase
                 api_key: "test-key"
                 models: ["test-model"]
             }
-            
+
             agent greeting {
                 model: openai("test-model")
                 prompt: "Write a short welcome message."
                 output: $output
             }
-            
+
             output {
                 greeting: agent.greeting
             }

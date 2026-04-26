@@ -21,7 +21,7 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function getEnvironmentSetUp($app): void
     {
-        $app['config']->set('superwire.cli.path', dirname(__DIR__, 3).'/superwire-cli');
+        $app[ 'config' ]->set('superwire.cli.path', dirname(__DIR__, 3) . '/superwire-cli');
     }
 
     protected function writeTemporaryWorkflow(string $wire, string $prefix = 'superwire-workflow-'): string

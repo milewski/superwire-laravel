@@ -18,18 +18,20 @@ final readonly class StructuredOutputStrategy
     public function agent(OutputField $field, AgentInvocation $invocation, array $tools, OutputSchemaTypeMapper $schemaTypeMapper): AnonymousAgent
     {
         if ($field->isObject()) {
+
             return new SuperwireStructuredAnonymousAgent(
                 instructions: '',
                 messages: [],
                 tools: $tools,
                 schema: fn (JsonSchemaTypeFactory $schema): array => $schemaTypeMapper->schemaFields(fields: $field->fields(), schema: $schema),
             );
+
         }
 
         return new SuperwireAnonymousAgent(instructions: '', messages: [], tools: $tools);
     }
 
-    public function output(mixed $response): array | string
+    public function output(mixed $response): array|string
     {
         return $response instanceof StructuredAgentResponse ? $response->structured : $response->text;
     }

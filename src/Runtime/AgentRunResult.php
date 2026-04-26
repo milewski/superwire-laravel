@@ -7,7 +7,7 @@ namespace Superwire\Laravel\Runtime;
 final readonly class AgentRunResult
 {
     public function __construct(
-        public array | string $output,
+        public array|string $output,
         public array $history = [],
     )
     {

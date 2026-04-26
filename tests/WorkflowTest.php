@@ -4,17 +4,17 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests;
 
-use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Contracts\AgentRunner;
+use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Enums\OutputStrategy;
-use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Runtime\AgentInvocation;
+use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
-use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutput;
-use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutputFromArray;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
+use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutput;
+use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutputFromArray;
 use Superwire\Laravel\Workflow;
 
 final class WorkflowTest extends TestCase
@@ -65,10 +65,12 @@ final class WorkflowTest extends TestCase
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2, 3 ],
             'speller' => function (AgentInvocation $invocation): string {
+
                 self::assertSame('test-model', $invocation->model);
                 self::assertSame('test-key', $invocation->providerConfig[ 'api_key' ]);
 
                 return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
+
             },
         ]);
 
@@ -130,9 +132,11 @@ final class WorkflowTest extends TestCase
     {
         FakeAgentRunner::fake([
             'assistant' => function (AgentInvocation $invocation): array {
+
                 $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
 
                 return [ 'weather' => 'sunny' ];
+
             },
         ]);
 
@@ -150,9 +154,11 @@ final class WorkflowTest extends TestCase
     {
         FakeAgentRunner::fake([
             'assistant' => function (AgentInvocation $invocation): array {
+
                 $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
 
                 return [ 'weather' => 'sunny' ];
+
             },
         ]);
 

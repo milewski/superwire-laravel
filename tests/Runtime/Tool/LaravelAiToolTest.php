@@ -41,12 +41,14 @@ final class LaravelAiToolTest extends TestCase
         );
 
         Http::assertSent(function (ClientRequest $request) use ($toolUrl): bool {
+
             return $request->url() === $toolUrl
                 && $request->hasHeader('Authorization', 'Bearer internal-token')
                 && $request[ 'input' ] === [ 'query' => 'laravel' ]
                 && $request[ 'workflow_path' ] === __DIR__ . '/../../Stubs/search_tool.wire'
                 && $request[ 'tool_class' ] === SearchTool::class
                 && $request[ 'bounded' ] === [ 'tenant_id' => 'tenant-123' ];
+
         });
     }
 
@@ -75,9 +77,11 @@ final class LaravelAiToolTest extends TestCase
         );
 
         Http::assertSent(function (ClientRequest $request) use ($toolUrl): bool {
+
             return $request->url() === $toolUrl
                 && $request->hasHeader('Authorization', 'Bearer internal-token')
                 && $request[ 'input' ] === [ 'query' => 'laravel' ];
+
         });
     }
 

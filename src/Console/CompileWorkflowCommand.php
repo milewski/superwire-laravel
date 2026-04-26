@@ -19,10 +19,12 @@ final class CompileWorkflowCommand extends Command
         $outputPath = $this->option('output');
 
         if (is_string($outputPath) && $outputPath !== '') {
+
             file_put_contents($outputPath, $json);
             $this->components->info(sprintf('Compiled workflow written to %s.', $outputPath));
 
             return self::SUCCESS;
+
         }
 
         $this->line($json);

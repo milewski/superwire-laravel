@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel;
 
-use InvalidArgumentException;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
@@ -80,7 +80,7 @@ final class Workflow
     {
         $workflow = clone $this;
         $workflow->tools = array_map(
-            callback: fn (AbstractTool | string $tool): AbstractTool => $this->resolveTool($tool),
+            callback: fn (AbstractTool|string $tool): AbstractTool => $this->resolveTool($tool),
             array: $tools,
         );
 
@@ -176,7 +176,7 @@ final class Workflow
         };
     }
 
-    private function resolveTool(AbstractTool | string $tool): AbstractTool
+    private function resolveTool(AbstractTool|string $tool): AbstractTool
     {
         if ($tool instanceof AbstractTool) {
             return $tool;
@@ -192,19 +192,23 @@ final class Workflow
     private function mapOutput(mixed $output, string $class): object
     {
         if (method_exists($class, 'from')) {
+
             $mapped = $class::from($output);
 
             if (is_object($mapped)) {
                 return $mapped;
             }
+
         }
 
         if (method_exists($class, 'fromArray') && is_array($output)) {
+
             $mapped = $class::fromArray($output);
 
             if (is_object($mapped)) {
                 return $mapped;
             }
+
         }
 
         if (!is_array($output)) {

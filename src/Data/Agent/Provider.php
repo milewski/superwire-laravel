@@ -31,7 +31,7 @@ final class Provider
         return new self(
             name: self::string($payload, 'name'),
             driver: self::string($payload, 'driver'),
-            models: is_array($payload['models'] ?? null) ? $payload['models'] : [],
+            models: is_array($payload[ 'models' ] ?? null) ? $payload[ 'models' ] : [],
             config: self::array($payload, 'config'),
         );
     }

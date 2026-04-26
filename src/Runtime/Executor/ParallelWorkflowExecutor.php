@@ -147,11 +147,15 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
     protected function runForkedTasks(array $tasks, string $context): array
     {
         try {
+
             return $this->fork()
                 ->concurrent($this->maxParallelAgents())
                 ->run(...$tasks);
+
         } catch (Throwable $exception) {
+
             throw new RuntimeException(sprintf('Parallel execution failed while running %s: %s', $context, $exception->getMessage()), previous: $exception);
+
         }
     }
 

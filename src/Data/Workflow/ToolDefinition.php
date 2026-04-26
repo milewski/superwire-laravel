@@ -26,7 +26,7 @@ final class ToolDefinition
 
     public static function fromArray(array $payload): self
     {
-        $description = $payload['description'] ?? null;
+        $description = $payload[ 'description' ] ?? null;
 
         if (!is_string($description) && $description !== null) {
             throw new InvalidArgumentException('description must be a string or null');
@@ -45,19 +45,19 @@ final class ToolDefinition
         );
     }
 
-    public function validateAgentArguments(array | object $arguments): void
+    public function validateAgentArguments(array|object $arguments): void
     {
         JsonSchemaFactory::validate($this->inputSchema, $arguments, sprintf('tool `%s` input', $this->name));
     }
 
-    public function validateBoundArguments(array | object $arguments): void
+    public function validateBoundArguments(array|object $arguments): void
     {
         JsonSchemaFactory::validate($this->boundedSchema, $arguments, sprintf('tool `%s` bound arguments', $this->name));
     }
 
     public function inputParameters(): array
     {
-        $properties = $this->inputSchemaDefinition['properties'] ?? [];
+        $properties = $this->inputSchemaDefinition[ 'properties' ] ?? [];
         $requiredProperties = $this->requiredProperties($this->inputSchemaDefinition);
         $parameters = [];
 
@@ -84,7 +84,7 @@ final class ToolDefinition
 
     private function requiredProperties(array $schemaDefinition): array
     {
-        $requiredProperties = $schemaDefinition['required'] ?? [];
+        $requiredProperties = $schemaDefinition[ 'required' ] ?? [];
 
         if (!is_array($requiredProperties)) {
             return [];
