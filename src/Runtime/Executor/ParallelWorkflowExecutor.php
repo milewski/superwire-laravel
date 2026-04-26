@@ -5,16 +5,21 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
+use RuntimeException;
 use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
+use Superwire\Laravel\Runtime\Executor\Concerns\ResetsDatabaseConnectionsForForks;
 use Superwire\Laravel\Runtime\ReferenceResolver;
 use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Support\JsonSchemaFactory;
+use Throwable;
 
 readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
 {
+    use ResetsDatabaseConnectionsForForks;
+
     public function execute(WorkflowDefinition $definition, array $inputs = [], array $secrets = [], array $tools = [], ?string $runId = null, ?AgentMode $agentMode = null, ?OutputStrategy $outputStrategy = null): WorkflowResult
     {
         $definition->validateInputValues($inputs);
@@ -47,11 +52,11 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
 
                 }
 
-                $results = $this->fork()
-                    ->concurrent($this->maxParallelAgents())
-                    ->run(...$tasks);
+                $results = $this->runForkedTasks(tasks: $tasks, context: 'workflow batch');
 
                 foreach ($results as $payload) {
+
+                    $payload = $this->parallelAgentPayload(payload: $payload);
 
                     $agent = $definition->agents->findByName($payload[ 'agent' ]);
                     $result = $payload[ 'result' ];
@@ -111,9 +116,7 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
 
         }
 
-        $results = $this->fork()
-            ->concurrent($this->maxParallelAgents())
-            ->run(...$tasks);
+        $results = $this->runForkedTasks(tasks: $tasks, context: sprintf('agent `%s` for_each iterations', $agent->name));
 
         ksort($results);
 
@@ -121,6 +124,8 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
         $history = [];
 
         foreach ($results as $result) {
+
+            $result = $this->parallelAgentResult(result: $result, context: sprintf('agent `%s` for_each iteration', $agent->name));
 
             JsonSchemaFactory::validate(
                 schema: $agent->output->iteration->jsonSchema,
@@ -137,6 +142,46 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
             'output' => $outputs,
             'history' => $history,
         ];
+    }
+
+    protected function runForkedTasks(array $tasks, string $context): array
+    {
+        try {
+            return $this->fork()
+                ->concurrent($this->maxParallelAgents())
+                ->run(...$tasks);
+        } catch (Throwable $exception) {
+            throw new RuntimeException(sprintf('Parallel execution failed while running %s: %s', $context, $exception->getMessage()), previous: $exception);
+        }
+    }
+
+    private function parallelAgentPayload(mixed $payload): array
+    {
+        if (!is_array($payload) || !is_string($payload[ 'agent' ] ?? null)) {
+            throw new RuntimeException(sprintf('Parallel execution returned an invalid workflow batch payload: %s', $this->describeForkPayload($payload)));
+        }
+
+        $payload[ 'result' ] = $this->parallelAgentResult(result: $payload[ 'result' ] ?? null, context: sprintf('agent `%s`', $payload[ 'agent' ]));
+
+        return $payload;
+    }
+
+    private function parallelAgentResult(mixed $result, string $context): array
+    {
+        if (!is_array($result) || !array_key_exists('output', $result) || !isset($result[ 'history' ]) || !is_array($result[ 'history' ])) {
+            throw new RuntimeException(sprintf('Parallel execution returned an invalid result for %s: %s', $context, $this->describeForkPayload($result)));
+        }
+
+        return $result;
+    }
+
+    private function describeForkPayload(mixed $payload): string
+    {
+        if (is_string($payload)) {
+            return $payload === '' ? 'empty string' : sprintf('string `%s`', substr($payload, 0, 120));
+        }
+
+        return get_debug_type($payload);
     }
 
     private function maxParallelAgents(): int

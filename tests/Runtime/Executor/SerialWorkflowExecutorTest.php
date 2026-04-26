@@ -183,12 +183,8 @@ final class SerialWorkflowExecutorTest extends TestCase
         $this->assertStringContainsString(needle: 'Previous response: []', haystack: $runner->invocation(1)->prompt);
     }
 
-    public function test_it_executes_for_each_iterations_in_parallel(): void
+    public function test_it_executes_for_each_iterations_serially(): void
     {
-        if (!function_exists('pcntl_fork')) {
-            $this->markTestSkipped('PCNTL is required for parallel for_each execution.');
-        }
-
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2, 3 ],
             'speller' => function (AgentInvocation $invocation): string {
@@ -214,15 +210,11 @@ final class SerialWorkflowExecutorTest extends TestCase
         $elapsed = microtime(true) - $started;
 
         $this->assertSame(expected: [ 'numbers' => [ 'one', 'two', 'three' ] ], actual: $result->output);
-        $this->assertLessThan(0.45, $elapsed);
+        $this->assertGreaterThan(0.7, $elapsed);
     }
 
-    public function test_it_purges_database_connections_before_forked_for_each_iterations(): void
+    public function test_it_does_not_purge_database_connections_for_for_each_iterations(): void
     {
-        if (!function_exists('pcntl_fork')) {
-            $this->markTestSkipped('PCNTL is required for parallel for_each execution.');
-        }
-
         $database = new class {
 
             public int $purges = 0;
@@ -246,13 +238,7 @@ final class SerialWorkflowExecutorTest extends TestCase
 
         $runner = FakeAgentRunner::fake([
             'counter' => [ 1, 2 ],
-            'speller' => function (AgentInvocation $invocation): string {
-                if (app('db')->purges !== 1) {
-                    throw new InvalidArgumentException('Expected the forked child to purge database connections before running.');
-                }
-
-                return [ 'one', 'two' ][ (int) $invocation->iterationValue - 1 ];
-            },
+            'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two' ][ (int) $invocation->iterationValue - 1 ],
         ]);
 
         $executor = new SerialWorkflowExecutor($runner);

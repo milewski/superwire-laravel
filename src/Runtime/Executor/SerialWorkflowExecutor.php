@@ -17,7 +17,6 @@ use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\AgentRunResult;
-use Superwire\Laravel\Runtime\Executor\Concerns\ResetsDatabaseConnectionsForForks;
 use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
@@ -30,8 +29,6 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 
 readonly class SerialWorkflowExecutor implements WorkflowExecutor
 {
-    use ResetsDatabaseConnectionsForForks;
-
     public function __construct(
         protected AgentRunner $agentRunner,
         protected PromptRenderer $promptRenderer = new PromptRenderer(),
@@ -220,23 +217,6 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
 
         $items = is_array($iterable) ? array_values($iterable) : iterator_to_array($iterable, false);
 
-        if (count($items) > 1 && function_exists('pcntl_fork')) {
-
-            return $this->runForEachAgentInParallel(
-                definition: $definition,
-                agent: $agent,
-                items: $items,
-                inputs: $inputs,
-                secrets: $secrets,
-                agentOutputs: $agentOutputs,
-                toolMap: $toolMap,
-                runId: $runId,
-                agentMode: $agentMode,
-                outputStrategy: $outputStrategy,
-            );
-
-        }
-
         return $this->runForEachAgentSerially(
             definition: $definition,
             agent: $agent,
@@ -249,39 +229,6 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             agentMode: $agentMode,
             outputStrategy: $outputStrategy,
         );
-    }
-
-    protected function runForEachAgentInParallel(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
-    {
-        $tasks = [];
-
-        foreach ($items as $index => $item) {
-
-            $tasks[] = fn (): array => [
-                'index' => $index,
-                'result' => $this->runForEachAgentIteration(
-                    definition: $definition,
-                    agent: $agent,
-                    item: $item,
-                    inputs: $inputs,
-                    secrets: $secrets,
-                    agentOutputs: $agentOutputs,
-                    toolMap: $toolMap,
-                    runId: $runId,
-                    agentMode: $agentMode,
-                    outputStrategy: $outputStrategy,
-                ),
-            ];
-
-        }
-
-        $results = $this->fork()
-            ->concurrent(max(1, (int) config('superwire.runtime.max_parallel_agents', 4)))
-            ->run(...$tasks);
-
-        usort($results, fn (array $left, array $right): int => $left[ 'index' ] <=> $right[ 'index' ]);
-
-        return $this->collectForEachAgentResults(agent: $agent, results: array_column($results, 'result'));
     }
 
     protected function runForEachAgentSerially(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array

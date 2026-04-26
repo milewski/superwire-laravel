@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Runtime\Executor;
 
+use RuntimeException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Enums\OutputStrategy;
@@ -131,6 +132,61 @@ final class ParallelWorkflowExecutorTest extends TestCase
         );
 
         $this->assertSame(expected: [ 'greeting' => 'tool_calling' ], actual: $result->output);
+    }
+
+    public function test_it_fails_with_clear_error_when_parallel_batch_returns_invalid_payload(): void
+    {
+        $runner = FakeAgentRunner::fake([
+            'customer_story' => 'customer',
+            'investor_story' => 'investor',
+            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        ]);
+
+        $executor = new readonly class($runner) extends ParallelWorkflowExecutor {
+            protected function runForkedTasks(array $tasks, string $context): array
+            {
+                return [ '' ];
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Parallel execution returned an invalid workflow batch payload: empty string');
+
+        $executor->execute(definition: $this->workflowDefinition(fixture: 'parallel_batch.wire'));
+    }
+
+    public function test_it_fails_with_clear_error_when_parallel_for_each_returns_invalid_result(): void
+    {
+        $runner = FakeAgentRunner::fake([
+            'counter' => [ 1, 2 ],
+            'speller' => fn (AgentInvocation $invocation): string => [ 'one', 'two' ][ (int) $invocation->iterationValue - 1 ],
+        ]);
+
+        $executor = new readonly class($runner) extends ParallelWorkflowExecutor {
+            protected function runForkedTasks(array $tasks, string $context): array
+            {
+                if (str_contains($context, 'for_each')) {
+                    return [ '' ];
+                }
+
+                return array_map(
+                    callback: fn (callable $task): array => $task(),
+                    array: $tasks,
+                );
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Parallel execution returned an invalid result for agent `speller` for_each iteration: empty string');
+
+        $executor->execute(
+            definition: $this->workflowDefinition(fixture: 'simple_loop.wire'),
+            secrets: [
+                'api_key' => 'test-key',
+                'endpoint' => 'http://example.test/v1',
+                'model' => 'test-model',
+            ],
+        );
     }
 
     private function workflowDefinition(string $fixture): WorkflowDefinition
