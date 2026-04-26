@@ -10,8 +10,9 @@ use JsonSerializable;
 final readonly class WorkflowResult implements Arrayable, JsonSerializable
 {
     public function __construct(
-        public array $output,
+        public mixed $output,
         public array $history,
+        public array $context = [],
     )
     {
     }
@@ -21,6 +22,7 @@ final readonly class WorkflowResult implements Arrayable, JsonSerializable
         return [
             'output' => $this->output,
             'history' => $this->history,
+            'context' => $this->context,
         ];
     }
 

@@ -13,10 +13,6 @@ final class ToolDefinition
 {
     use ValidatesPayload;
 
-    /**
-     * @param array<string, mixed> $inputSchemaDefinition
-     * @param array<string, mixed> $boundedSchemaDefinition
-     */
     public function __construct(
         public readonly string $name,
         public readonly ?string $description,
@@ -28,9 +24,6 @@ final class ToolDefinition
     {
     }
 
-    /**
-     * @param array<string, mixed> $payload
-     */
     public static function fromArray(array $payload): self
     {
         $description = $payload['description'] ?? null;
@@ -52,25 +45,16 @@ final class ToolDefinition
         );
     }
 
-    /**
-     * @param array<string, mixed> $arguments
-     */
-    public function validateAgentArguments(array $arguments): void
+    public function validateAgentArguments(array | object $arguments): void
     {
         JsonSchemaFactory::validate($this->inputSchema, $arguments, sprintf('tool `%s` input', $this->name));
     }
 
-    /**
-     * @param array<string, mixed> $arguments
-     */
-    public function validateBoundArguments(array $arguments): void
+    public function validateBoundArguments(array | object $arguments): void
     {
         JsonSchemaFactory::validate($this->boundedSchema, $arguments, sprintf('tool `%s` bound arguments', $this->name));
     }
 
-    /**
-     * @return array<int, array{name: string, schema: array<string, mixed>, required: bool}>
-     */
     public function inputParameters(): array
     {
         $properties = $this->inputSchemaDefinition['properties'] ?? [];
@@ -98,10 +82,6 @@ final class ToolDefinition
         return $parameters;
     }
 
-    /**
-     * @param array<string, mixed> $schemaDefinition
-     * @return array<int, string>
-     */
     private function requiredProperties(array $schemaDefinition): array
     {
         $requiredProperties = $schemaDefinition['required'] ?? [];

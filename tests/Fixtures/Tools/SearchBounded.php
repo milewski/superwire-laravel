@@ -4,7 +4,9 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Fixtures\Tools;
 
-final readonly class SearchBounded
+use Superwire\Laravel\Contracts\BoundInput;
+
+final readonly class SearchBounded implements BoundInput
 {
     public function __construct(
         public string $tenantId,

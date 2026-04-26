@@ -8,6 +8,8 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionParameter;
+use Superwire\Laravel\Contracts\BoundInput;
 
 abstract class AbstractTool
 {
@@ -35,8 +37,8 @@ abstract class AbstractTool
 
         foreach ($method->getParameters() as $parameter) {
 
-            $values = str_contains($parameter->getName(), 'bound') ? $bounded : $input;
             $type = $parameter->getType();
+            $values = $this->parameterReceivesBoundValues(parameter: $parameter, type: $type) ? $bounded : $input;
 
             if (!$type instanceof ReflectionNamedType || $type->getName() === 'array') {
 
@@ -76,5 +78,16 @@ abstract class AbstractTool
         }
 
         return new $type(...$values);
+    }
+
+    private function parameterReceivesBoundValues(ReflectionParameter $parameter, ?ReflectionNamedType $type): bool
+    {
+        if (str_contains($parameter->getName(), 'bound')) {
+            return true;
+        }
+
+        return $type instanceof ReflectionNamedType
+            && class_exists($type->getName())
+            && is_a($type->getName(), BoundInput::class, true);
     }
 }

@@ -53,7 +53,7 @@ final class SuperwireLaravelServiceProvider extends ServiceProvider
 
         }
 
-        Route::post('/_superwire/workflows/{workflow}/agents/{agent}/tools/{tool}', InternalToolController::class)
+        Route::post('/_superwire/a/{agent}/t/{tool}', InternalToolController::class)
             ->name('superwire.tools.invoke');
     }
 }

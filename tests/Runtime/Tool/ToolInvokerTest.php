@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Runtime\Tool\ToolInvoker;
 use Superwire\Laravel\Runtime\Tool\ToolRegistry;
+use Superwire\Laravel\Tools\AbstractTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\SearchTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\TypedSearchTool;
 use Superwire\Laravel\Tests\TestCase;
@@ -71,6 +72,40 @@ final class ToolInvokerTest extends TestCase
             input: [],
             bounded: [ 'tenant_id' => 'tenant-123' ],
         );
+    }
+
+    public function test_it_validates_empty_object_tool_inputs(): void
+    {
+        $tool = new class extends AbstractTool {
+            public function handle(array $input, array $bounded): array
+            {
+                return [ 'input' => $input, 'bounded' => $bounded ];
+            }
+        };
+
+        $result = new ToolInvoker()->invoke(
+            tool: $tool,
+            definition: ToolDefinition::fromArray([
+                'name' => 'empty_input',
+                'description' => 'Empty input',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                    'required' => [],
+                    'additionalProperties' => false,
+                ],
+                'bounded_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                    'required' => [],
+                    'additionalProperties' => false,
+                ],
+            ]),
+            input: [],
+            bounded: [],
+        );
+
+        $this->assertSame(expected: [ 'input' => [], 'bounded' => [] ], actual: $result);
     }
 
     private function toolDefinition(string $name): ToolDefinition

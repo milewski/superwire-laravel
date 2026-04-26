@@ -1,0 +1,29 @@
+provider openai {
+    driver: "openai"
+    endpoint: "http://example.test/v1"
+    api_key: "test-key"
+    models: ["test-model"]
+}
+
+tool search {
+    input {
+        query: string
+    }
+
+    bounded {
+        tenant_id: string
+    }
+}
+
+agent assistant {
+    model: openai("test-model")
+    tools: [
+        tool.search(tenant_id: "tenant-123"),
+    ]
+    prompt: "Search."
+    output: string
+}
+
+output {
+    answer: agent.assistant
+}

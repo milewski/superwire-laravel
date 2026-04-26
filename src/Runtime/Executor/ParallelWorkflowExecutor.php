@@ -71,6 +71,10 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
             return new WorkflowResult(
                 output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs),
                 history: $history,
+                context: [
+                    'inputs' => $inputs,
+                    'agent_outputs' => $agentOutputs,
+                ],
             );
 
         } finally {

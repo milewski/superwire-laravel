@@ -24,5 +24,6 @@ return [
 
     'tools' => [
         'internal_token' => env('SUPERWIRE_INTERNAL_TOOL_TOKEN'),
+        'internal_base_url' => env('SUPERWIRE_INTERNAL_TOOL_BASE_URL'),
     ],
 ];

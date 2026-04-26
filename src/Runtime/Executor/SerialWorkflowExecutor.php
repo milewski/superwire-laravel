@@ -86,6 +86,10 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             return new WorkflowResult(
                 output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs),
                 history: $history,
+                context: [
+                    'inputs' => $inputs,
+                    'agent_outputs' => $agentOutputs,
+                ],
             );
 
         } finally {
@@ -484,6 +488,8 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 ),
                 runId: $runId,
                 agentName: $agent->name,
+                toolClass: $toolMap[ $toolDefinition->name ]::class,
+                workflowPath: $definition->workflowPath,
             );
 
             $this->toolScopeRegistry->register(tool: $toolMap[ $toolDefinition->name ], binding: $binding);

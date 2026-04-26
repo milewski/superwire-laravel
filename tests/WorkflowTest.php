@@ -11,6 +11,8 @@ use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
+use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutput;
+use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutputFromArray;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
 use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
 use Superwire\Laravel\Workflow;
@@ -142,6 +144,58 @@ final class WorkflowTest extends TestCase
             expected: [ 'weather' => 'sunny' ],
             actual: $result->output,
         );
+    }
+
+    public function test_it_accepts_tool_class_strings_for_the_current_workflow_run(): void
+    {
+        FakeAgentRunner::fake([
+            'assistant' => function (AgentInvocation $invocation): array {
+                $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
+
+                return [ 'weather' => 'sunny' ];
+            },
+        ]);
+
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
+            ->withTools([ BoundSchemaTool::class, RetryWeatherTool::class ])
+            ->run();
+
+        $this->assertSame(
+            expected: [ 'weather' => 'sunny' ],
+            actual: $result->output,
+        );
+    }
+
+    public function test_it_maps_workflow_output_into_class(): void
+    {
+        FakeAgentRunner::fake([
+            'customer_story' => 'customer',
+            'investor_story' => 'investor',
+            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        ]);
+
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
+            ->mapInto(WorkflowMappedOutput::class)
+            ->run();
+
+        $this->assertInstanceOf(expected: WorkflowMappedOutput::class, actual: $result->output);
+        $this->assertSame(expected: 'Combine customer and investor.', actual: $result->output->review);
+    }
+
+    public function test_it_maps_workflow_output_using_from_array_factory(): void
+    {
+        FakeAgentRunner::fake([
+            'customer_story' => 'customer',
+            'investor_story' => 'investor',
+            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        ]);
+
+        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
+            ->mapInto(WorkflowMappedOutputFromArray::class)
+            ->run();
+
+        $this->assertInstanceOf(expected: WorkflowMappedOutputFromArray::class, actual: $result->output);
+        $this->assertSame(expected: 'COMBINE CUSTOMER AND INVESTOR.', actual: $result->output->review);
     }
 
     public function test_it_can_run_workflow_agents_using_stream_mode(): void

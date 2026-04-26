@@ -6,10 +6,12 @@ namespace Superwire\Laravel\Tests\Runtime\Tool;
 
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\URL;
 use Laravel\Ai\Tools\Request;
 use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
 use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
+use Superwire\Laravel\Tests\Fixtures\Tools\SearchTool;
 use Superwire\Laravel\Tests\TestCase;
 
 final class LaravelAiToolTest extends TestCase
@@ -19,10 +21,43 @@ final class LaravelAiToolTest extends TestCase
         config()->set('superwire.tools.internal_token', 'internal-token');
 
         $toolUrl = route('superwire.tools.invoke', [
-            'workflow' => 'run-1',
             'agent' => 'assistant',
             'tool' => 'search',
         ]);
+
+        Http::fake([
+            $toolUrl => Http::response([
+                'result' => [ 'answer' => 'found' ],
+            ]),
+        ]);
+
+        $result = new LaravelAiTool(tool: $this->boundTool())->handle(
+            request: new Request([ 'query' => 'laravel' ]),
+        );
+
+        $this->assertSame(
+            expected: json_encode([ 'answer' => 'found' ]),
+            actual: $result,
+        );
+
+        Http::assertSent(function (ClientRequest $request) use ($toolUrl): bool {
+            return $request->url() === $toolUrl
+                && $request->hasHeader('Authorization', 'Bearer internal-token')
+                && $request[ 'input' ] === [ 'query' => 'laravel' ]
+                && $request[ 'workflow_path' ] === __DIR__ . '/../../Stubs/search_tool.wire'
+                && $request[ 'tool_class' ] === SearchTool::class
+                && $request[ 'bounded' ] === [ 'tenant_id' => 'tenant-123' ];
+        });
+    }
+
+    public function test_it_invokes_internal_endpoint_through_configured_internal_base_url(): void
+    {
+        config()->set('superwire.tools.internal_token', 'internal-token');
+        config()->set('superwire.tools.internal_base_url', 'http://php');
+
+        URL::forceScheme('https');
+
+        $toolUrl = 'http://php/_superwire/a/assistant/t/search';
 
         Http::fake([
             $toolUrl => Http::response([
@@ -67,9 +102,11 @@ final class LaravelAiToolTest extends TestCase
                     'additionalProperties' => false,
                 ],
             ]),
-            bounded: [],
+            bounded: [ 'tenant_id' => 'tenant-123' ],
             runId: 'run-1',
             agentName: 'assistant',
+            toolClass: SearchTool::class,
+            workflowPath: __DIR__ . '/../../Stubs/search_tool.wire',
         );
     }
 }

@@ -13,6 +13,8 @@ final readonly class BoundToolDefinition
         public array $bounded,
         public string $runId,
         public string $agentName,
+        public ?string $toolClass = null,
+        public ?string $workflowPath = null,
     )
     {
     }

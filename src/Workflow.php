@@ -15,6 +15,7 @@ use Superwire\Laravel\Enums\WorkflowExecutionMode;
 use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
 use Superwire\Laravel\Runtime\WorkflowResult;
+use Superwire\Laravel\Tools\AbstractTool;
 
 final class Workflow
 {
@@ -26,6 +27,7 @@ final class Workflow
         private ?AgentMode $agentMode = null,
         private ?OutputStrategy $outputStrategy = null,
         private ?WorkflowExecutionMode $executionMode = null,
+        private ?string $outputClass = null,
     )
     {
     }
@@ -77,7 +79,10 @@ final class Workflow
     public function withTools(array $tools): self
     {
         $workflow = clone $this;
-        $workflow->tools = $tools;
+        $workflow->tools = array_map(
+            callback: fn (AbstractTool | string $tool): AbstractTool => $this->resolveTool($tool),
+            array: $tools,
+        );
 
         return $workflow;
     }
@@ -122,9 +127,21 @@ final class Workflow
         return $workflow;
     }
 
+    public function mapInto(string $class): self
+    {
+        if (!class_exists($class)) {
+            throw new InvalidArgumentException(sprintf('Workflow output class `%s` does not exist.', $class));
+        }
+
+        $workflow = clone $this;
+        $workflow->outputClass = $class;
+
+        return $workflow;
+    }
+
     public function run(): WorkflowResult
     {
-        return $this->executor()->execute(
+        $result = $this->executor()->execute(
             definition: $this->definition,
             inputs: $this->inputs,
             secrets: $this->secrets,
@@ -132,6 +149,16 @@ final class Workflow
             runId: (string) Str::uuid(),
             agentMode: $this->agentMode,
             outputStrategy: $this->outputStrategy,
+        );
+
+        if ($this->outputClass === null) {
+            return $result;
+        }
+
+        return new WorkflowResult(
+            output: $this->mapOutput(output: $result->output, class: $this->outputClass),
+            history: $result->history,
+            context: $result->context,
         );
     }
 
@@ -147,5 +174,43 @@ final class Workflow
             WorkflowExecutionMode::Parallel => app(ParallelWorkflowExecutor::class),
             null => app(WorkflowExecutor::class),
         };
+    }
+
+    private function resolveTool(AbstractTool | string $tool): AbstractTool
+    {
+        if ($tool instanceof AbstractTool) {
+            return $tool;
+        }
+
+        if (!is_a($tool, AbstractTool::class, true)) {
+            throw new InvalidArgumentException('Workflow tools must extend ' . AbstractTool::class . '.');
+        }
+
+        return app($tool);
+    }
+
+    private function mapOutput(mixed $output, string $class): object
+    {
+        if (method_exists($class, 'from')) {
+            $mapped = $class::from($output);
+
+            if (is_object($mapped)) {
+                return $mapped;
+            }
+        }
+
+        if (method_exists($class, 'fromArray') && is_array($output)) {
+            $mapped = $class::fromArray($output);
+
+            if (is_object($mapped)) {
+                return $mapped;
+            }
+        }
+
+        if (!is_array($output)) {
+            return new $class($output);
+        }
+
+        return new $class(...$output);
     }
 }

@@ -4,9 +4,6 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Http\Controllers;
 
-use Superwire\Laravel\Data\Workflow\ToolDefinition;
-use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
-use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Tests\Fixtures\Tools\SearchTool;
 use Superwire\Laravel\Tests\TestCase;
 
@@ -16,11 +13,9 @@ final class InternalToolControllerTest extends TestCase
     {
         config()->set('superwire.tools.internal_token', 'internal-token');
 
-        $this->registerScopedTool();
-
         $response = $this->postJson(
-            uri: '/_superwire/workflows/run-1/agents/assistant/tools/search',
-            data: [ 'input' => [ 'query' => 'laravel' ] ],
+            uri: '/_superwire/a/assistant/t/search',
+            data: $this->toolRequestPayload(input: [ 'query' => 'laravel' ]),
             headers: [ 'Authorization' => 'Bearer internal-token' ],
         );
 
@@ -38,7 +33,7 @@ final class InternalToolControllerTest extends TestCase
         config()->set('superwire.tools.internal_token', 'internal-token');
 
         $response = $this->postJson(
-            uri: '/_superwire/workflows/run-1/agents/assistant/tools/search',
+            uri: '/_superwire/a/assistant/t/search',
             data: [
                 'input' => [ 'query' => 'laravel' ],
             ],
@@ -51,53 +46,37 @@ final class InternalToolControllerTest extends TestCase
     {
         config()->set('superwire.tools.internal_token', 'internal-token');
 
-        $this->registerScopedTool();
-
         $response = $this->postJson(
-            uri: '/_superwire/workflows/run-1/agents/assistant/tools/search',
-            data: [
-                'input' => [],
-            ],
+            uri: '/_superwire/a/assistant/t/search',
+            data: $this->toolRequestPayload(input: []),
             headers: [ 'Authorization' => 'Bearer internal-token' ],
         );
 
         $response->assertStatus(422);
-        $response->assertJsonFragment([ 'error' => 'Invalid tool `search` input: Object expected, [] received' ]);
+        $response->assertJsonFragment([ 'error' => 'Invalid tool `search` input: Required property missing: query, data: []' ]);
     }
 
-    private function registerScopedTool(): void
+    public function test_it_rejects_unknown_workflow_tools(): void
     {
-        app(ToolScopeRegistry::class)->register(
-            tool: new SearchTool(),
-            binding: new BoundToolDefinition(
-                definition: ToolDefinition::fromArray([ 'name' => 'search', ...$this->definitionPayload() ]),
-                bounded: [ 'tenant_id' => 'tenant-123' ],
-                runId: 'run-1',
-                agentName: 'assistant',
-            ),
+        config()->set('superwire.tools.internal_token', 'internal-token');
+
+        $response = $this->postJson(
+            uri: '/_superwire/a/assistant/t/missing_tool',
+            data: $this->toolRequestPayload(input: [ 'query' => 'laravel' ]),
+            headers: [ 'Authorization' => 'Bearer internal-token' ],
         );
+
+        $response->assertStatus(422);
+        $response->assertJsonFragment([ 'error' => 'Tool `missing_tool` is not defined in workflow `' . __DIR__ . '/../../Stubs/search_tool.wire`.' ]);
     }
 
-    private function definitionPayload(): array
+    private function toolRequestPayload(array $input): array
     {
         return [
-            'description' => 'Search documents',
-            'input_schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'query' => [ 'type' => 'string' ],
-                ],
-                'required' => [ 'query' ],
-                'additionalProperties' => false,
-            ],
-            'bounded_schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'tenant_id' => [ 'type' => 'string' ],
-                ],
-                'required' => [ 'tenant_id' ],
-                'additionalProperties' => false,
-            ],
+            'input' => $input,
+            'workflow_path' => __DIR__ . '/../../Stubs/search_tool.wire',
+            'tool_class' => SearchTool::class,
+            'bounded' => [ 'tenant_id' => 'tenant-123' ],
         ];
     }
 }
