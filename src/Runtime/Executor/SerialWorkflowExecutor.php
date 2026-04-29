@@ -6,6 +6,7 @@ namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Streaming\Events\ToolResult;
 use Laravel\Ai\Tools\Request;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
@@ -353,10 +354,10 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
 
         $stream = $this->agentRunner->runStream(invocation: $invocation);
         $events = iterator_to_array($stream);
-        $text = TextDelta::combine($events);
+        $output = $this->streamOutput(events: $events, invocation: $invocation);
 
         return new AgentRunResult(
-            output: $text,
+            output: $output,
             history: [
                 [
                     'role' => 'user',
@@ -364,7 +365,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 ],
                 [
                     'role' => 'assistant',
-                    'content' => $text,
+                    'content' => is_string($output) ? $output : json_encode($output, JSON_UNESCAPED_SLASHES),
                     'events' => array_map(
                         callback: fn (object $event): array => method_exists($event, 'toArray') ? $event->toArray() : [ 'type' => $event::class ],
                         array: $events,
@@ -372,6 +373,47 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 ],
             ],
         );
+    }
+
+    protected function streamOutput(array $events, AgentInvocation $invocation): array|string
+    {
+        if ($invocation->tools === [] && $invocation->outputStrategy !== OutputStrategy::ToolCalling) {
+            return TextDelta::combine($events);
+        }
+
+        foreach (array_reverse($events) as $event) {
+
+            if (!$event instanceof ToolResult) {
+                continue;
+            }
+
+            $toolName = class_basename($event->toolResult->name);
+
+            if (!in_array($toolName, [ 'OutputSuccessTool', 'OutputAbortTool' ], true)) {
+                continue;
+            }
+
+            $result = is_string($event->toolResult->result) ? json_decode($event->toolResult->result, true) : $event->toolResult->result;
+
+            if (!is_array($result)) {
+                continue;
+            }
+
+            if (($result[ 'superwire_output_abort' ] ?? false) === true) {
+                throw new InvalidArgumentException('Agent aborted output: ' . ($result[ 'reason' ] ?? 'No reason provided.'));
+            }
+
+            if (($result[ 'superwire_output_success' ] ?? false) === true) {
+
+                $output = $result[ 'output' ] ?? [];
+
+                return is_array($output) ? $output : (string) $output;
+
+            }
+
+        }
+
+        return TextDelta::combine($events);
     }
 
     protected function attemptHistory(AgentInvocation $invocation, int $attempt, array $history): array
