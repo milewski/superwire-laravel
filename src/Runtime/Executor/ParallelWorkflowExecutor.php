@@ -28,6 +28,16 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
         $agentMode ??= $this->configuredAgentMode();
         $outputStrategy ??= $this->configuredOutputStrategy();
         $toolMap = $this->toolMap(tools: $tools);
+        $dynamicValues = $this->resolveDynamicValues(
+            expressions: $definition->dynamic,
+            definition: $definition,
+            inputs: $inputs,
+            secrets: $secrets,
+            agentOutputs: [],
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: 'workflow',
+        );
 
         try {
 
@@ -46,8 +56,8 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
                     $tasks[] = fn (): array => [
                         'agent' => $agent->name,
                         'result' => $agent->runsForEach()
-                            ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode, $outputStrategy)
-                            : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode, $outputStrategy),
+                            ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $dynamicValues, $toolMap, $runId, $agentMode, $outputStrategy)
+                            : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $dynamicValues, $toolMap, $runId, $agentMode, $outputStrategy),
                     ];
 
                 }
@@ -74,11 +84,12 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
             }
 
             return new WorkflowResult(
-                output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs),
+                output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs, $dynamicValues),
                 history: $history,
                 context: [
                     'inputs' => $inputs,
                     'agent_outputs' => $agentOutputs,
+                    'dynamic' => $dynamicValues,
                 ],
             );
 
@@ -87,9 +98,9 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
         }
     }
 
-    protected function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    protected function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
     {
-        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
+        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs, $dynamicValues);
         $iterable = $resolver->resolve($agent->forEachReference());
 
         if (!is_iterable($iterable)) {
@@ -106,6 +117,7 @@ readonly class ParallelWorkflowExecutor extends SerialWorkflowExecutor
                 inputs: $inputs,
                 secrets: $secrets,
                 agentOutputs: $agentOutputs,
+                dynamicValues: $dynamicValues,
                 toolMap: $toolMap,
                 runId: $runId,
                 agentMode: $agentMode,

@@ -78,6 +78,10 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
 
     private function strategy(AgentInvocation $invocation): StructuredOutputStrategy|ToolCallingStrategy
     {
+        if ($invocation->tools !== []) {
+            return new ToolCallingStrategy();
+        }
+
         return match ($invocation->outputStrategy) {
             OutputStrategy::Structured => new StructuredOutputStrategy(),
             OutputStrategy::ToolCalling => new ToolCallingStrategy(),

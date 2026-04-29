@@ -12,6 +12,7 @@ final readonly class ReferenceResolver
         private array $inputs,
         private array $secrets,
         private array $agentOutputs,
+        private array $dynamicValues = [],
         private ?string $iterationIdentifier = null,
         private mixed $iterationValue = null,
     )
@@ -27,6 +28,7 @@ final readonly class ReferenceResolver
             'input' => $this->inputs,
             'secrets' => $this->secrets,
             'agent' => $this->resolveAgent($segments, $reference),
+            'dynamic' => $this->dynamicValues,
             $this->iterationIdentifier => $this->iterationValue,
             default => throw new InvalidArgumentException(sprintf('Unknown workflow reference `%s`.', $reference)),
         };

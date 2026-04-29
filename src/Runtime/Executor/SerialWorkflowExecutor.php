@@ -6,12 +6,12 @@ namespace Superwire\Laravel\Runtime\Executor;
 
 use InvalidArgumentException;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Tools\Request;
 use Superwire\Laravel\Contracts\AgentRunner;
 use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Agent\OutputField;
-use Superwire\Laravel\Data\Agent\OutputFieldReference;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
@@ -21,6 +21,7 @@ use Superwire\Laravel\Runtime\OutputParser;
 use Superwire\Laravel\Runtime\PromptRenderer;
 use Superwire\Laravel\Runtime\ReferenceResolver;
 use Superwire\Laravel\Runtime\Tool\BoundToolDefinition;
+use Superwire\Laravel\Runtime\Tool\LaravelAiTool;
 use Superwire\Laravel\Runtime\Tool\ToolScopeRegistry;
 use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Support\JsonSchemaFactory;
@@ -46,6 +47,16 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         $agentMode ??= $this->configuredAgentMode();
         $outputStrategy ??= $this->configuredOutputStrategy();
         $toolMap = $this->toolMap(tools: $tools);
+        $dynamicValues = $this->resolveDynamicValues(
+            expressions: $definition->dynamic,
+            definition: $definition,
+            inputs: $inputs,
+            secrets: $secrets,
+            agentOutputs: [],
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: 'workflow',
+        );
 
         try {
 
@@ -64,8 +75,8 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                     );
 
                     $result = $agent->runsForEach()
-                        ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode, $outputStrategy)
-                        : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $toolMap, $runId, $agentMode, outputStrategy: $outputStrategy);
+                        ? $this->runForEachAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $dynamicValues, $toolMap, $runId, $agentMode, $outputStrategy)
+                        : $this->runAgent($definition, $agent, $inputs, $secrets, $agentOutputs, $dynamicValues, $toolMap, $runId, $agentMode, outputStrategy: $outputStrategy);
 
                     $agentOutputs[ $agent->name ] = $result[ 'output' ];
                     $history = [ ...$history, ...$result[ 'history' ] ];
@@ -81,11 +92,12 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             }
 
             return new WorkflowResult(
-                output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs),
+                output: $this->resolveWorkflowOutput($definition, $inputs, $secrets, $agentOutputs, $dynamicValues),
                 history: $history,
                 context: [
                     'inputs' => $inputs,
                     'agent_outputs' => $agentOutputs,
+                    'dynamic' => $dynamicValues,
                 ],
             );
 
@@ -96,12 +108,26 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
     }
 
-    protected function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy, ?string $iterationIdentifier = null, mixed $iterationValue = null): array
+    protected function runAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy, ?string $iterationIdentifier = null, mixed $iterationValue = null): array
     {
+        $agentDynamicValues = $this->resolveDynamicValues(
+            expressions: $agent->dynamic,
+            definition: $definition,
+            inputs: $inputs,
+            secrets: $secrets,
+            agentOutputs: $agentOutputs,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: $agent->name,
+            baseDynamicValues: $dynamicValues,
+            iterationIdentifier: $iterationIdentifier,
+            iterationValue: $iterationValue,
+        );
         $resolver = new ReferenceResolver(
             inputs: $inputs,
             secrets: $secrets,
             agentOutputs: $agentOutputs,
+            dynamicValues: $agentDynamicValues,
             iterationIdentifier: $iterationIdentifier,
             iterationValue: $iterationValue,
         );
@@ -206,9 +232,9 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         ]);
     }
 
-    protected function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    protected function runForEachAgent(WorkflowDefinition $definition, Agent $agent, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
     {
-        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
+        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs, $dynamicValues);
         $iterable = $resolver->resolve($agent->forEachReference());
 
         if (!is_iterable($iterable)) {
@@ -224,6 +250,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             inputs: $inputs,
             secrets: $secrets,
             agentOutputs: $agentOutputs,
+            dynamicValues: $dynamicValues,
             toolMap: $toolMap,
             runId: $runId,
             agentMode: $agentMode,
@@ -231,7 +258,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    protected function runForEachAgentSerially(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    protected function runForEachAgentSerially(WorkflowDefinition $definition, Agent $agent, array $items, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
     {
         $results = [];
 
@@ -244,6 +271,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
                 inputs: $inputs,
                 secrets: $secrets,
                 agentOutputs: $agentOutputs,
+                dynamicValues: $dynamicValues,
                 toolMap: $toolMap,
                 runId: $runId,
                 agentMode: $agentMode,
@@ -255,7 +283,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $this->collectForEachAgentResults(agent: $agent, results: $results);
     }
 
-    protected function runForEachAgentIteration(WorkflowDefinition $definition, Agent $agent, mixed $item, array $inputs, array $secrets, array $agentOutputs, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
+    protected function runForEachAgentIteration(WorkflowDefinition $definition, Agent $agent, mixed $item, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues, array $toolMap, string $runId, AgentMode $agentMode, OutputStrategy $outputStrategy): array
     {
         return $this->runAgent(
             definition: $definition,
@@ -263,6 +291,7 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             inputs: $inputs,
             secrets: $secrets,
             agentOutputs: $agentOutputs,
+            dynamicValues: $dynamicValues,
             toolMap: $toolMap,
             runId: $runId,
             agentMode: $agentMode,
@@ -356,12 +385,72 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         );
     }
 
-    protected function resolveWorkflowOutput(WorkflowDefinition $definition, array $inputs, array $secrets, array $agentOutputs): array
+    protected function resolveDynamicValues(
+        array $expressions,
+        WorkflowDefinition $definition,
+        array $inputs,
+        array $secrets,
+        array $agentOutputs,
+        array $toolMap,
+        string $runId,
+        string $agentName,
+        array $baseDynamicValues = [],
+        ?string $iterationIdentifier = null,
+        mixed $iterationValue = null,
+    ): array
     {
-        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs);
+        $dynamicValues = $baseDynamicValues;
+        $pendingExpressions = $expressions;
+
+        while ($pendingExpressions !== []) {
+
+            $pendingCountBeforePass = count($pendingExpressions);
+            $lastException = null;
+            $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs, $dynamicValues, $iterationIdentifier, $iterationValue);
+
+            foreach ($pendingExpressions as $fieldName => $expression) {
+
+                try {
+
+                    $dynamicValues[ $fieldName ] = $this->resolveValue(
+                        value: $expression,
+                        resolver: $resolver,
+                        definition: $definition,
+                        toolMap: $toolMap,
+                        runId: $runId,
+                        agentName: $agentName,
+                    );
+                    unset($pendingExpressions[ $fieldName ]);
+
+                } catch (InvalidArgumentException $exception) {
+
+                    $lastException = $exception;
+
+                }
+
+            }
+
+            if (count($pendingExpressions) === $pendingCountBeforePass) {
+
+                if ($lastException !== null) {
+                    throw $lastException;
+                }
+
+                break;
+
+            }
+
+        }
+
+        return $dynamicValues;
+    }
+
+    protected function resolveWorkflowOutput(WorkflowDefinition $definition, array $inputs, array $secrets, array $agentOutputs, array $dynamicValues): array
+    {
+        $resolver = new ReferenceResolver($inputs, $secrets, $agentOutputs, $dynamicValues);
 
         $output = array_map(
-            callback: fn (OutputFieldReference $field) => $resolver->resolve($field->ref),
+            callback: fn (mixed $expression): mixed => $this->resolveValue(value: $expression, resolver: $resolver),
             array: $definition->output->fields,
         );
 
@@ -380,10 +469,18 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         return $output;
     }
 
-    protected function resolveValue(string|array $value, ReferenceResolver $resolver): mixed
+    protected function resolveValue(mixed $value, ReferenceResolver $resolver, ?WorkflowDefinition $definition = null, array $toolMap = [], ?string $runId = null, ?string $agentName = null): mixed
     {
         if (is_array($value) && count($value) === 1 && isset($value[ '$ref' ]) && is_string($value[ '$ref' ])) {
             return $resolver->resolve($value[ '$ref' ]);
+        }
+
+        if (is_array($value) && isset($value[ '$tool_call' ]) && is_string($value[ '$tool_call' ])) {
+            if ($definition === null || $runId === null || $agentName === null) {
+                throw new InvalidArgumentException('Manual tool calls require workflow execution context.');
+            }
+
+            return $this->executeManualToolCall($value, $resolver, $definition, $toolMap, $runId, $agentName);
         }
 
         if (!is_array($value)) {
@@ -391,9 +488,77 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
 
         return array_map(
-            callback: fn (string|array $child) => $this->resolveValue($child, $resolver),
+            callback: fn (mixed $child): mixed => is_string($child) || is_array($child)
+                ? $this->resolveValue($child, $resolver, $definition, $toolMap, $runId, $agentName)
+                : $child,
             array: $value,
         );
+    }
+
+    protected function executeManualToolCall(array $toolCall, ReferenceResolver $resolver, WorkflowDefinition $definition, array $toolMap, string $runId, string $agentName): array
+    {
+        $toolName = $this->manualToolCallName($toolCall[ '$tool_call' ]);
+        $toolDefinition = $definition->toolDefinitionNamed($toolName);
+
+        if ($toolDefinition === null) {
+            throw new InvalidArgumentException(sprintf('Manual tool call references unknown tool `%s`.', $toolName));
+        }
+
+        if (!isset($toolMap[ $toolName ])) {
+            throw new InvalidArgumentException(sprintf('Workflow tool `%s` was not provided.', $toolName));
+        }
+
+        $input = $this->resolveValue(
+            value: is_array($toolCall[ 'input' ] ?? null) ? $toolCall[ 'input' ] : [],
+            resolver: $resolver,
+            definition: $definition,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: $agentName,
+        );
+        $bindings = $this->resolveValue(
+            value: is_array($toolCall[ 'bindings' ] ?? null) ? $toolCall[ 'bindings' ] : [],
+            resolver: $resolver,
+            definition: $definition,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: $agentName,
+        );
+
+        if (!is_array($input) || !is_array($bindings)) {
+            throw new InvalidArgumentException(sprintf('Manual tool call `%s` input and bindings must resolve to objects.', $toolName));
+        }
+
+        $binding = new BoundToolDefinition(
+            definition: $toolDefinition,
+            bounded: $bindings,
+            runId: $runId,
+            agentName: $agentName,
+            toolClass: $toolMap[ $toolName ]::class,
+            workflowPath: $definition->workflowPath,
+        );
+
+        $result = (new LaravelAiTool($binding))->handle(new Request($input));
+        $decodedResult = json_decode($result, true);
+
+        if (!is_array($decodedResult)) {
+            throw new InvalidArgumentException(sprintf('Manual tool call `%s` returned invalid JSON.', $toolName));
+        }
+
+        if (array_key_exists('error', $decodedResult)) {
+            throw new InvalidArgumentException(sprintf('Manual tool call `%s` failed: %s', $toolName, (string) $decodedResult[ 'error' ]));
+        }
+
+        return $decodedResult;
+    }
+
+    protected function manualToolCallName(string $toolReference): string
+    {
+        if (!str_starts_with($toolReference, 'tool.')) {
+            throw new InvalidArgumentException(sprintf('Manual tool call must target `tool.<name>`, received `%s`.', $toolReference));
+        }
+
+        return substr($toolReference, strlen('tool.'));
     }
 
     protected function resolveModel(Agent $agent, ReferenceResolver $resolver): string
