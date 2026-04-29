@@ -33,7 +33,7 @@ final class ToolDefinition
         }
 
         $inputSchemaDefinition = self::array($payload, 'input_schema');
-        $boundedSchemaDefinition = self::array($payload, 'bounded_schema');
+        $boundedSchemaDefinition = self::array($payload, array_key_exists('binding_schema', $payload) ? 'binding_schema' : 'bounded_schema');
 
         return new self(
             name: self::string($payload, 'name'),

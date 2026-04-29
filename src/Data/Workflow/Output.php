@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Data\Workflow;
 
-use Superwire\Laravel\Data\Agent\OutputFieldReference;
 use Superwire\Laravel\Data\Concerns\ValidatesPayload;
 
 final class Output
@@ -12,7 +11,7 @@ final class Output
     use ValidatesPayload;
 
     /**
-     * @param array<string, OutputFieldReference> $fields
+     * @param array<string, mixed> $fields
      * @param array<string, mixed> $contract
      */
     public function __construct(
@@ -27,15 +26,8 @@ final class Output
      */
     public static function fromArray(array $payload): self
     {
-        $fieldsPayload = self::array($payload, 'fields');
-        $fields = [];
-
-        foreach ($fieldsPayload as $key => $value) {
-            $fields[ $key ] = OutputFieldReference::fromArray($value);
-        }
-
         return new self(
-            fields: $fields,
+            fields: self::array($payload, 'fields'),
             contract: self::array($payload, 'contract'),
         );
     }
