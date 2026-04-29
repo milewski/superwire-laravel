@@ -10,7 +10,7 @@ tool search {
         query: string
     }
 
-    bounded {
+    bindings {
         tenant_id: string
     }
 }
@@ -18,7 +18,11 @@ tool search {
 agent assistant {
     model: openai("test-model")
     tools: [
-        tool.search(tenant_id: "tenant-123"),
+        tool.search {
+            bindings {
+                tenant_id: "tenant-123"
+            }
+        },
     ]
     prompt: "Search."
     output: string

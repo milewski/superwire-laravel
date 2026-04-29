@@ -154,6 +154,7 @@ final class WorkflowCompilerTest extends TestCase
                 'workflow_path' => $workflowPath,
                 'input' => null,
                 'secrets' => null,
+                'dynamic' => [],
                 'schemas' => [],
                 'tools' => [],
                 'providers' => [],

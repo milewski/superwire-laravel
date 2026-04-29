@@ -24,7 +24,11 @@ tool retry_weather_tool {
 agent assistant {
     model: openai("test-model")
     tools: [
-        tool.bound_schema_tool(tenant_id: "tenant-123"),
+        tool.bound_schema_tool {
+            bindings {
+                tenant_id: "tenant-123"
+            }
+        },
         tool.retry_weather_tool
     ]
     prompt: "Use the weather tool and finish with the weather summary."
