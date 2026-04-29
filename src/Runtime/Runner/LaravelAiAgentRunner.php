@@ -108,8 +108,8 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
             $history[] = [
                 'role' => 'assistant',
                 'content' => $step->text,
-                'tool_calls' => $this->arrayValues($step->toolCalls),
-                'tool_results' => $this->arrayValues($step->toolResults),
+                'tool_calls' => $this->toolCallValues($step->toolCalls, $invocation),
+                'tool_results' => $this->toolResultValues($step->toolResults, $invocation),
                 'finish_reason' => $step->finishReason->value,
                 'usage' => $this->arrayValue($step->usage),
                 'meta' => $this->arrayValue($step->meta),
@@ -120,7 +120,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         if ($history === [ [ 'role' => 'user', 'content' => $invocation->prompt ] ]) {
 
             foreach ($response->messages as $message) {
-                $history[] = $this->messageHistoryEntry(message: $message);
+                $history[] = $this->messageHistoryEntry(message: $message, invocation: $invocation);
             }
 
         }
@@ -130,8 +130,8 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
             $history[] = [
                 'role' => 'assistant',
                 'content' => is_string($output) ? $output : json_encode($output, JSON_UNESCAPED_SLASHES),
-                'tool_calls' => $this->arrayValues($response->toolCalls),
-                'tool_results' => $this->arrayValues($response->toolResults),
+                'tool_calls' => $this->toolCallValues($response->toolCalls, $invocation),
+                'tool_results' => $this->toolResultValues($response->toolResults, $invocation),
                 'usage' => $this->arrayValue($response->usage),
                 'meta' => $this->arrayValue($response->meta),
             ];
@@ -141,7 +141,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         return $history;
     }
 
-    private function messageHistoryEntry(mixed $message): array
+    private function messageHistoryEntry(mixed $message, AgentInvocation $invocation): array
     {
         $entry = [
             'role' => $message->role->value,
@@ -149,14 +149,107 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         ];
 
         if (property_exists($message, 'toolCalls')) {
-            $entry[ 'tool_calls' ] = $this->arrayValues($message->toolCalls);
+            $entry[ 'tool_calls' ] = $this->toolCallValues($message->toolCalls, $invocation);
         }
 
         if (property_exists($message, 'toolResults')) {
-            $entry[ 'tool_results' ] = $this->arrayValues($message->toolResults);
+            $entry[ 'tool_results' ] = $this->toolResultValues($message->toolResults, $invocation);
         }
 
         return $entry;
+    }
+
+    private function toolCallValues(iterable $toolCalls, AgentInvocation $invocation): array
+    {
+        $items = [];
+
+        foreach ($toolCalls as $toolCall) {
+            $item = $this->arrayValue($toolCall);
+
+            if (is_array($item)) {
+                $item[ 'name' ] = $this->historyToolName($item, $invocation);
+            }
+
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    private function toolResultValues(iterable $toolResults, AgentInvocation $invocation): array
+    {
+        $items = [];
+
+        foreach ($toolResults as $toolResult) {
+            $item = $this->arrayValue($toolResult);
+
+            if (is_array($item)) {
+                $item[ 'name' ] = $this->historyToolName($item, $invocation);
+                unset($item[ 'arguments' ]);
+            }
+
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    private function historyToolName(array $toolPayload, AgentInvocation $invocation): string
+    {
+        $toolName = $toolPayload[ 'name' ] ?? null;
+
+        if ($toolName !== LaravelAiTool::class && $toolName !== class_basename(LaravelAiTool::class)) {
+            return is_string($toolName) ? $toolName : 'unknown_tool';
+        }
+
+        if (count($invocation->tools) === 1) {
+            return $invocation->tools[0]->definition->name;
+        }
+
+        $arguments = is_array($toolPayload[ 'arguments' ] ?? null) ? $toolPayload[ 'arguments' ] : [];
+
+        foreach ($invocation->tools as $tool) {
+
+            if ($this->toolInputSchemaMatchesArguments($tool, $arguments)) {
+                return $tool->definition->name;
+            }
+
+        }
+
+        return class_basename(LaravelAiTool::class);
+    }
+
+    private function toolInputSchemaMatchesArguments(BoundToolDefinition $tool, array $arguments): bool
+    {
+        $properties = $tool->definition->inputSchemaDefinition[ 'properties' ] ?? [];
+
+        if (!is_array($properties)) {
+            return $arguments === [];
+        }
+
+        foreach (array_keys($arguments) as $argumentName) {
+
+            if (!is_string($argumentName) || !array_key_exists($argumentName, $properties)) {
+                return false;
+            }
+
+        }
+
+        $requiredProperties = $tool->definition->inputSchemaDefinition[ 'required' ] ?? [];
+
+        if (!is_array($requiredProperties)) {
+            return true;
+        }
+
+        foreach ($requiredProperties as $requiredProperty) {
+
+            if (is_string($requiredProperty) && !array_key_exists($requiredProperty, $arguments)) {
+                return false;
+            }
+
+        }
+
+        return true;
     }
 
     private function arrayValues(iterable $values): array
