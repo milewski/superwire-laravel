@@ -110,6 +110,7 @@ trait HandlesForkedWorkflowExecution
         foreach ($iterationValues as $iterationValue) {
 
             $tasks[] = function () use ($agent, $agentOutputs, $iterationIdentifier, $iterationValue, $dynamicValues): ForkExecutionFailure|AgentExecutionResult {
+
                 $scope = [ $iterationIdentifier => $iterationValue ];
                 $agentDynamicValues = $this->resolveDynamicValues($agent->dynamic, $agentOutputs, $scope, $dynamicValues);
 
@@ -128,6 +129,7 @@ trait HandlesForkedWorkflowExecution
                     scope: $scope,
                     dynamicValues: $agentDynamicValues,
                 );
+
             };
 
         }

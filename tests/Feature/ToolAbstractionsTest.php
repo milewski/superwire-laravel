@@ -81,7 +81,7 @@ final class ToolAbstractionsTest extends TestCase
             ->toAiToolFromDefinition($toolDefinition)
             ->handle(new Request([ 'country' => 'portugal' ]));
 
-        $this->assertStringContainsString('city', (string)$result);
+        $this->assertStringContainsString('city', (string) $result);
         $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
     }
 
@@ -99,7 +99,7 @@ final class ToolAbstractionsTest extends TestCase
             ->toAiToolFromDefinition($toolDefinition)
             ->handle(new Request([ 'city' => 123 ]));
 
-        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', (string)$result);
+        $this->assertStringContainsString('tool `retry_weather_tool` input is invalid', (string) $result);
         $this->assertSame(0, ToolValidationRetryWeatherTool::handleCallCount());
     }
 

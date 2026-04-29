@@ -203,6 +203,7 @@ final readonly class Runtime
         }
 
         if (array_keys($expression) === [ '$ref' ] && is_string($expression[ '$ref' ])) {
+
             return $this->promptParser->resolveReference(
                 reference: $expression[ '$ref' ],
                 agentOutputs: $agentOutputs,
@@ -211,6 +212,7 @@ final readonly class Runtime
                 secretValues: $this->secretValues,
                 dynamicValues: $dynamicValues,
             );
+
         }
 
         if (array_key_exists('$template', $expression) && is_array($expression[ '$template' ])) {
@@ -241,9 +243,11 @@ final readonly class Runtime
         foreach ($templateParts as $templatePart) {
 
             if (!is_array($templatePart)) {
+
                 $resolvedTemplate .= (string) $templatePart;
 
                 continue;
+
             }
 
             $resolvedValue = $this->resolveExpression($templatePart, $agentOutputs, $scope, $dynamicValues);
@@ -268,7 +272,13 @@ final readonly class Runtime
 
         $tool = $this->configuredToolNamed($toolName);
         $input = $this->resolveExpression($expression[ 'input' ] ?? [], $agentOutputs, $scope, $dynamicValues);
-        $bindings = $this->resolveExpression($expression[ 'bindings' ] ?? [], $agentOutputs, $scope, $dynamicValues);
+        $bindings = $this->resolveToolBindings(
+            fixedBindings: $toolDefinition->fixedBindings,
+            overrideBindings: is_array($expression[ 'bindings' ] ?? null) ? $expression[ 'bindings' ] : [],
+            agentOutputs: $agentOutputs,
+            scope: $scope,
+            dynamicValues: $dynamicValues,
+        );
 
         if (!is_array($input) || !is_array($bindings)) {
             throw new RuntimeException(sprintf('Manual tool call `%s` input and bindings must resolve to objects.', $toolName));
@@ -278,16 +288,30 @@ final readonly class Runtime
         $toolDefinition->validateBoundArguments($bindings);
 
         if ($tool instanceof AbstractTool) {
+
             return $tool->execute(
                 agentInput: $tool::resolveAgentInput($input),
                 boundInput: $tool::resolveBoundInput($bindings),
             );
+
         }
 
         $result = (string) $tool->toAiTool($bindings)->handle(new Request($input));
         $decodedResult = json_decode($result, true);
 
         return json_last_error() === JSON_ERROR_NONE ? $decodedResult : $result;
+    }
+
+    private function resolveToolBindings(array $fixedBindings, array $overrideBindings, array $agentOutputs, array $scope, array $dynamicValues): array
+    {
+        $resolvedFixedBindings = $this->resolveExpression($fixedBindings, $agentOutputs, $scope, $dynamicValues);
+        $resolvedOverrideBindings = $this->resolveExpression($overrideBindings, $agentOutputs, $scope, $dynamicValues);
+
+        if (!is_array($resolvedFixedBindings) || !is_array($resolvedOverrideBindings)) {
+            throw new RuntimeException('Tool bindings must resolve to objects.');
+        }
+
+        return [ ...$resolvedFixedBindings, ...$resolvedOverrideBindings ];
     }
 
     private function manualToolCallName(string $toolReference): string

@@ -164,6 +164,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         $items = [];
 
         foreach ($toolCalls as $toolCall) {
+
             $item = $this->arrayValue($toolCall);
 
             if (is_array($item)) {
@@ -171,6 +172,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
             }
 
             $items[] = $item;
+
         }
 
         return $items;
@@ -181,14 +183,18 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         $items = [];
 
         foreach ($toolResults as $toolResult) {
+
             $item = $this->arrayValue($toolResult);
 
             if (is_array($item)) {
+
                 $item[ 'name' ] = $this->historyToolName($item, $invocation);
                 unset($item[ 'arguments' ]);
+
             }
 
             $items[] = $item;
+
         }
 
         return $items;
@@ -203,7 +209,7 @@ final readonly class LaravelAiAgentRunner implements AgentRunner, StreamableAgen
         }
 
         if (count($invocation->tools) === 1) {
-            return $invocation->tools[0]->definition->name;
+            return $invocation->tools[ 0 ]->definition->name;
         }
 
         $arguments = is_array($toolPayload[ 'arguments' ] ?? null) ? $toolPayload[ 'arguments' ] : [];

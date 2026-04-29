@@ -20,6 +20,7 @@ final class ToolDefinition
         public readonly Schema $inputSchema,
         public readonly array $boundedSchemaDefinition,
         public readonly Schema $boundedSchema,
+        public readonly array $fixedBindings,
     )
     {
     }
@@ -42,6 +43,7 @@ final class ToolDefinition
             inputSchema: JsonSchemaFactory::fromArray($inputSchemaDefinition, 'tool input schema'),
             boundedSchemaDefinition: $boundedSchemaDefinition,
             boundedSchema: JsonSchemaFactory::fromArray($boundedSchemaDefinition, 'tool bounded schema'),
+            fixedBindings: is_array($payload[ 'fixed_bindings' ] ?? null) ? $payload[ 'fixed_bindings' ] : [],
         );
     }
 
@@ -52,7 +54,7 @@ final class ToolDefinition
 
     public function validateBoundArguments(array|object $arguments): void
     {
-        JsonSchemaFactory::validate($this->boundedSchema, $arguments, sprintf('tool `%s` bound arguments', $this->name));
+        JsonSchemaFactory::validate($this->boundedSchema, $this->boundValidationArguments($arguments), sprintf('tool `%s` bound arguments', $this->name));
     }
 
     public function inputParameters(): array
@@ -91,5 +93,36 @@ final class ToolDefinition
         }
 
         return array_values(array_filter($requiredProperties, is_string(...)));
+    }
+
+    private function boundValidationArguments(array|object $arguments): array|object
+    {
+        if (!is_array($arguments)) {
+            return $arguments;
+        }
+
+        $properties = $this->boundedSchemaDefinition[ 'properties' ] ?? [];
+
+        if (!is_array($properties)) {
+            return $arguments;
+        }
+
+        $filteredArguments = [];
+
+        foreach (array_keys($properties) as $propertyName) {
+
+            if (!is_string($propertyName) || !array_key_exists($propertyName, $arguments)) {
+                continue;
+            }
+
+            $filteredArguments[ $propertyName ] = $arguments[ $propertyName ];
+
+        }
+
+        if ($filteredArguments === [] && ($this->boundedSchemaDefinition[ 'type' ] ?? null) === 'object') {
+            return (object) [];
+        }
+
+        return $filteredArguments;
     }
 }

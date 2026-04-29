@@ -12,6 +12,7 @@ use Superwire\Laravel\Contracts\StreamableAgentRunner;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Agent\Agent;
 use Superwire\Laravel\Data\Agent\OutputField;
+use Superwire\Laravel\Data\Workflow\ToolDefinition;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
 use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
@@ -476,11 +477,13 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
 
         if (is_array($value) && isset($value[ '$tool_call' ]) && is_string($value[ '$tool_call' ])) {
+
             if ($definition === null || $runId === null || $agentName === null) {
                 throw new InvalidArgumentException('Manual tool calls require workflow execution context.');
             }
 
             return $this->executeManualToolCall($value, $resolver, $definition, $toolMap, $runId, $agentName);
+
         }
 
         if (!is_array($value)) {
@@ -516,8 +519,10 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
             runId: $runId,
             agentName: $agentName,
         );
-        $bindings = $this->resolveValue(
-            value: is_array($toolCall[ 'bindings' ] ?? null) ? $toolCall[ 'bindings' ] : [],
+
+        $bindings = $this->resolveToolBindings(
+            toolDefinition: $toolDefinition,
+            overrideBindings: is_array($toolCall[ 'bindings' ] ?? null) ? $toolCall[ 'bindings' ] : [],
             resolver: $resolver,
             definition: $definition,
             toolMap: $toolMap,
@@ -596,9 +601,14 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
 
             $binding = new BoundToolDefinition(
                 definition: $toolDefinition,
-                bounded: $this->resolveValue(
-                    value: is_array($toolPayload[ 'bind' ] ?? null) ? $toolPayload[ 'bind' ] : [],
+                bounded: $this->resolveToolBindings(
+                    toolDefinition: $toolDefinition,
+                    overrideBindings: is_array($toolPayload[ 'bind' ] ?? null) ? $toolPayload[ 'bind' ] : [],
                     resolver: $resolver,
+                    definition: $definition,
+                    toolMap: $toolMap,
+                    runId: $runId,
+                    agentName: $agent->name,
                 ),
                 runId: $runId,
                 agentName: $agent->name,
@@ -613,6 +623,33 @@ readonly class SerialWorkflowExecutor implements WorkflowExecutor
         }
 
         return $tools;
+    }
+
+    protected function resolveToolBindings(ToolDefinition $toolDefinition, array $overrideBindings, ReferenceResolver $resolver, ?WorkflowDefinition $definition = null, array $toolMap = [], ?string $runId = null, ?string $agentName = null): array
+    {
+        $fixedBindings = $this->resolveValue(
+            value: $toolDefinition->fixedBindings,
+            resolver: $resolver,
+            definition: $definition,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: $agentName,
+        );
+
+        $resolvedOverrideBindings = $this->resolveValue(
+            value: $overrideBindings,
+            resolver: $resolver,
+            definition: $definition,
+            toolMap: $toolMap,
+            runId: $runId,
+            agentName: $agentName,
+        );
+
+        if (!is_array($fixedBindings) || !is_array($resolvedOverrideBindings)) {
+            throw new InvalidArgumentException(sprintf('Tool `%s` bindings must resolve to objects.', $toolDefinition->name));
+        }
+
+        return [ ...$fixedBindings, ...$resolvedOverrideBindings ];
     }
 
     protected function toolMap(array $tools): array

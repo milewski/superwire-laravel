@@ -108,6 +108,43 @@ final class ToolInvokerTest extends TestCase
         $this->assertSame(expected: [ 'input' => [], 'bounded' => [] ], actual: $result);
     }
 
+    public function test_it_allows_fixed_bound_values_outside_the_runtime_binding_schema(): void
+    {
+        $tool = new class () extends AbstractTool {
+            public function handle(array $input, array $bounded): array
+            {
+                return [ 'input' => $input, 'bounded' => $bounded ];
+            }
+        };
+
+        $result = new ToolInvoker()->invoke(
+            tool: $tool,
+            definition: ToolDefinition::fromArray([
+                'name' => 'fixed_binding_tool',
+                'description' => 'Fixed binding tool',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                    'required' => [],
+                    'additionalProperties' => false,
+                ],
+                'binding_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                    'required' => [],
+                    'additionalProperties' => false,
+                ],
+                'fixed_bindings' => [
+                    'project_id' => [ '$ref' => 'input.project_id' ],
+                ],
+            ]),
+            input: [],
+            bounded: [ 'project_id' => 123 ],
+        );
+
+        $this->assertSame(expected: [ 'input' => [], 'bounded' => [ 'project_id' => 123 ] ], actual: $result);
+    }
+
     private function toolDefinition(string $name): ToolDefinition
     {
         return ToolDefinition::fromArray([

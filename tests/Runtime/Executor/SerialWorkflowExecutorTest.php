@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Runtime\Executor;
 
+use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Superwire\Laravel\Contracts\WorkflowCompiler;
 use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
@@ -11,6 +12,7 @@ use Superwire\Laravel\Enums\AgentMode;
 use Superwire\Laravel\Enums\OutputStrategy;
 use Superwire\Laravel\Runtime\AgentInvocation;
 use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
+use Superwire\Laravel\Runtime\ReferenceResolver;
 use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
 use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
@@ -336,7 +338,7 @@ final class SerialWorkflowExecutorTest extends TestCase
                 );
 
                 $this->assertSame(
-                    expected: [ 'tenant_id' => 'tenant-123' ],
+                    expected: [ 'tenant_id' => 'tenant-123', 'region' => 'us-east-1' ],
                     actual: $invocation->tools[ 0 ]->bounded,
                 );
 
@@ -355,10 +357,53 @@ final class SerialWorkflowExecutorTest extends TestCase
         $this->assertSame(
             expected: [ 'weather' => 'sunny' ],
             actual: $executor->execute(
-                definition: $this->workflowDefinition(fixture: 'tool_schema_retry.wire'),
+                definition: $this->workflowDefinitionWithFixedToolBindings(fixture: 'tool_schema_retry.wire'),
+                inputs: [ 'region' => 'us-east-1' ],
                 tools: [ new BoundSchemaTool(), new RetryWeatherTool() ],
             )->output,
         );
+    }
+
+    public function test_it_passes_fixed_tool_bindings_to_manual_tool_calls(): void
+    {
+        config()->set('superwire.tools.internal_base_url', 'http://superwire.test');
+
+        Http::fake([
+            '*' => Http::response([ 'result' => [ 'ok' => true ] ]),
+        ]);
+
+        $executor = new readonly class (FakeAgentRunner::fake([])) extends SerialWorkflowExecutor {
+            public function callManualTool(array $toolCall, ReferenceResolver $resolver, WorkflowDefinition $definition, array $toolMap): array
+            {
+                return $this->executeManualToolCall(
+                    toolCall: $toolCall,
+                    resolver: $resolver,
+                    definition: $definition,
+                    toolMap: $toolMap,
+                    runId: 'test-run',
+                    agentName: 'workflow',
+                );
+            }
+        };
+
+        $result = $executor->callManualTool(
+            toolCall: [ '$tool_call' => 'tool.bound_schema_tool' ],
+            resolver: new ReferenceResolver(
+                inputs: [ 'project_id' => 123 ],
+                secrets: [],
+                agentOutputs: [ 'example' => [ 'task_id' => 456 ] ],
+            ),
+            definition: WorkflowDefinition::fromArray($this->manualToolWorkflowPayload()),
+            toolMap: [ 'bound_schema_tool' => new BoundSchemaTool() ],
+        );
+
+        $this->assertSame(expected: [ 'ok' => true ], actual: $result);
+
+        Http::assertSent(fn ($request): bool => $request->data()[ 'bounded' ] === [
+            'project_id' => 123,
+            'retry_count' => 3,
+            'task_id' => 456,
+        ]);
     }
 
     public function test_it_uses_configured_stream_agent_mode(): void
@@ -497,5 +542,83 @@ final class SerialWorkflowExecutorTest extends TestCase
         $payload[ 'agents' ][ 0 ][ 'model' ] = [ '$ref' => 'input.model' ];
 
         return WorkflowDefinition::fromArray(payload: $payload);
+    }
+
+    private function workflowDefinitionWithFixedToolBindings(string $fixture): WorkflowDefinition
+    {
+        $json = app(WorkflowCompiler::class)->compileToJson(
+            workflowPath: __DIR__ . '/../../Stubs/' . $fixture,
+        );
+
+        $payload = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        $payload[ 'input' ] = [
+            'workflow_type' => [
+                'kind' => 'object',
+                'fields' => [
+                    'region' => [ 'kind' => 'string' ],
+                ],
+            ],
+            'json_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'region' => [ 'type' => 'string' ],
+                ],
+                'required' => [ 'region' ],
+                'additionalProperties' => false,
+            ],
+        ];
+
+        $payload[ 'tools' ][ 0 ][ 'fixed_bindings' ] = [
+            'tenant_id' => 'fixed-tenant',
+            'region' => [ '$ref' => 'input.region' ],
+        ];
+
+        return WorkflowDefinition::fromArray(payload: $payload);
+    }
+
+    private function manualToolWorkflowPayload(): array
+    {
+        return [
+            'format' => 'superwire.workflow.v1',
+            'workflow_path' => '/tmp/manual-tool.wire',
+            'input' => null,
+            'secrets' => null,
+            'dynamic' => [],
+            'schemas' => [],
+            'tools' => [
+                [
+                    'name' => 'bound_schema_tool',
+                    'description' => 'Bound schema tool',
+                    'input_schema' => [
+                        'type' => 'object',
+                        'properties' => [],
+                        'required' => [],
+                        'additionalProperties' => false,
+                    ],
+                    'binding_schema' => [
+                        'type' => 'object',
+                        'properties' => [],
+                        'required' => [],
+                        'additionalProperties' => false,
+                    ],
+                    'fixed_bindings' => [
+                        'project_id' => [ '$ref' => 'input.project_id' ],
+                        'retry_count' => 3,
+                        'task_id' => [ '$ref' => 'agent.example.task_id' ],
+                    ],
+                ],
+            ],
+            'providers' => [],
+            'agents' => [],
+            'output' => [
+                'fields' => [],
+                'contract' => [],
+            ],
+            'execution' => [
+                'order' => [],
+                'batches' => [],
+                'edges' => [],
+            ],
+        ];
     }
 }

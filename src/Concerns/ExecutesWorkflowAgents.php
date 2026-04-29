@@ -208,10 +208,12 @@ trait ExecutesWorkflowAgents
             $message instanceof ToolResultMessage => [
                 'type' => 'tool_result',
                 'tool_results' => $message->toolResults->map(function ($toolResult): array {
+
                     $result = $toolResult->toArray();
                     $result[ 'tool_name' ] = $result[ 'name' ] ?? null;
 
                     return $result;
+
                 })->all(),
             ],
             default => method_exists($message, 'toArray') ? $message->toArray() : [ 'type' => 'unknown' ],
@@ -240,13 +242,11 @@ trait ExecutesWorkflowAgents
      */
     private function serializeAssistantMessage(AssistantMessage $message): array
     {
-        $serializedMessage = [
+        return [
             'type' => 'assistant',
             'content' => $message->content,
             'tool_calls' => $message->toolCalls->map(fn ($toolCall): array => $toolCall->toArray())->all(),
         ];
-
-        return $serializedMessage;
     }
 
     private function finalizationPrompt(array $outputSchema): string
