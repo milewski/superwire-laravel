@@ -12,8 +12,7 @@ final class JsonSchemaTypeMapper
     public function type(array $schemaDefinition, JsonSchema $schema): Type
     {
         $type = $schemaDefinition[ 'type' ] ?? 'string';
-
-        return match ($type) {
+        $mappedType = match ($type) {
             'integer' => $schema->integer(),
             'number' => $schema->number(),
             'boolean' => $schema->boolean(),
@@ -24,6 +23,12 @@ final class JsonSchemaTypeMapper
             'object' => $schema->object($this->properties(schemaDefinition: $schemaDefinition, schema: $schema)),
             default => $schema->string(),
         };
+
+        if (is_array($schemaDefinition[ 'enum' ] ?? null)) {
+            $mappedType->enum($schemaDefinition[ 'enum' ]);
+        }
+
+        return $mappedType;
     }
 
     public function properties(array $schemaDefinition, JsonSchema $schema): array
