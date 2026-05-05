@@ -4,265 +4,200 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests;
 
-use Superwire\Laravel\Contracts\AgentRunner;
-use Superwire\Laravel\Contracts\WorkflowCompiler;
-use Superwire\Laravel\Enums\OutputStrategy;
-use Superwire\Laravel\Runtime\AgentInvocation;
-use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
-use Superwire\Laravel\Tests\Fixtures\FakeAgentRunner;
-use Superwire\Laravel\Tests\Fixtures\FakeStreamableAgentRunner;
-use Superwire\Laravel\Tests\Fixtures\Tools\BoundSchemaTool;
-use Superwire\Laravel\Tests\Fixtures\Tools\RetryWeatherTool;
-use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutput;
-use Superwire\Laravel\Tests\Fixtures\WorkflowMappedOutputFromArray;
+use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
+use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Workflow;
+
+final class StubMappedOutput
+{
+    public function __construct(
+        public string $summary,
+        public array $themes,
+    )
+    {
+    }
+
+    public static function from(array $data): self
+    {
+        return new self(
+            summary: $data[ 'summary' ],
+            themes: $data[ 'themes' ] ?? [],
+        );
+    }
+}
+
+final class StubFromArrayOutput
+{
+    public function __construct(
+        public string $first,
+        public string $second,
+    )
+    {
+    }
+}
 
 final class WorkflowTest extends TestCase
 {
-    public function test_temp_live_example(): void
+    public function test_it_creates_workflow_from_file(): void
     {
-        if (getenv('SUPERWIRE_RUN_LIVE_TESTS') !== '1') {
-            $this->markTestSkipped('Set SUPERWIRE_RUN_LIVE_TESTS=1 to run the live LLM workflow test.');
-        }
+        $path = $this->writeTemporaryWorkflow('workflow test { output: string }');
 
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/example.wire')
-            ->usingRequestMode()
-            ->withStrategy(OutputStrategy::ToolCalling)
-            ->parallel()
-            ->run();
+        $workflow = Workflow::fromFile($path);
 
-        $this->assertSame(
-            expected: [
-                'numbers' => [
-                    [ 'number' => 1, 'number_string' => 'one' ],
-                    [ 'number' => 2, 'number_string' => 'two' ],
-                    [ 'number' => 3, 'number_string' => 'three' ],
-                    [ 'number' => 4, 'number_string' => 'four' ],
-                    [ 'number' => 5, 'number_string' => 'five' ],
-                ],
-            ],
-            actual: $result->output,
-        );
+        $this->assertSame($path, $workflow->filePath());
+        $this->assertSame(base64_encode('workflow test { output: string }'), $workflow->sourceBase64());
     }
 
-    public function test_it_executes_batches_and_resolves_agent_references(): void
+    public function test_it_throws_for_nonexistent_file(): void
     {
-        $runner = FakeAgentRunner::fake([
-            'customer_story' => 'customer',
-            'investor_story' => 'investor',
-            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        $this->expectException(InvalidArgumentException::class);
+
+        Workflow::fromFile('/nonexistent/path/workflow.wire');
+    }
+
+    public function test_it_creates_workflow_from_source(): void
+    {
+        $source = 'workflow test { output: string }';
+        $workflow = Workflow::fromSource($source);
+
+        $this->assertSame('inline', $workflow->filePath());
+        $this->assertSame(base64_encode($source), $workflow->sourceBase64());
+    }
+
+    public function test_it_sets_inputs_fluently(): void
+    {
+        $workflow = Workflow::fromSource('test')->inputs([ 'id' => 1, 'name' => 'test' ]);
+
+        $this->assertSame(base64_encode('test'), $workflow->sourceBase64());
+    }
+
+    public function test_it_sets_secrets_fluently(): void
+    {
+        $workflow = Workflow::fromSource('test')->secrets([ 'api_key' => 'sk-test' ]);
+
+        $this->assertSame(base64_encode('test'), $workflow->sourceBase64());
+    }
+
+    public function test_it_executes_workflow_and_returns_result(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([
+                'output' => [ 'summary' => 'Test', 'themes' => [] ],
+            ], 200),
         ]);
 
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')->run();
-
-        $this->assertSame([ 'review' => 'Combine customer and investor.' ], $result->output);
-        $this->assertSame(expected: 'customer_story', actual: $result->history[ 0 ][ 'agent' ]);
-        $this->assertSame([ 'customer_story', 'investor_story', 'review' ], $runner->agentNames());
-    }
-
-    public function test_it_executes_for_each_agents_with_iteration_context(): void
-    {
-        $runner = FakeAgentRunner::fake([
-            'counter' => [ 1, 2, 3 ],
-            'speller' => function (AgentInvocation $invocation): string {
-
-                self::assertSame('test-model', $invocation->model);
-                self::assertSame('test-key', $invocation->providerConfig[ 'api_key' ]);
-
-                return [ 'one', 'two', 'three' ][ (int) $invocation->iterationValue - 1 ];
-
-            },
-        ]);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/simple_loop.wire')
-            ->withSecrets([
-                'api_key' => 'test-key',
-                'endpoint' => 'http://example.test/v1',
-                'model' => 'test-model',
-            ])
+        $result = Workflow::fromSource('test workflow')
+            ->inputs([ 'project_id' => 1 ])
+            ->secrets([ 'api_key' => 'test' ])
             ->run();
 
-        $this->assertSame([ 'numbers' => [ 'one', 'two', 'three' ] ], $result->output);
-        $this->assertSame('Please spell out the number: 1 in lowercase.', $result->history[ 2 ][ 'content' ]);
+        $this->assertInstanceOf(WorkflowResult::class, $result);
+        $this->assertSame([ 'summary' => 'Test', 'themes' => [] ], $result->output);
     }
 
-    public function test_it_resolves_input_and_nested_output_interpolation(): void
+    public function test_it_streams_workflow_events(): void
     {
-        FakeAgentRunner::fake([
-            'release_summary' => fn (AgentInvocation $invocation): array => [
-                'summary' => $invocation->prompt,
-                'tagline' => 'Ship it',
-            ],
-            'launch_message' => fn (AgentInvocation $invocation): array => [
-                'body' => $invocation->prompt,
-            ],
+        $sseBody = implode("\n\n", [
+            'data: {"kind":"workflow_started"}',
+            'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
+        ]) . "\n\n";
+
+        Http::fake([
+            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
         ]);
 
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/interpolation_chain.wire')
-            ->withInputs([
-                'product_name' => 'Superwire',
-                'audience' => 'developers',
-            ])
-            ->run();
-
-        $this->assertSame(
-            expected: [
-                'body' => 'Write a launch note for developers about Summarize Superwire for developers. with tagline Ship it.',
-                'summary' => 'Summarize Superwire for developers.',
-            ],
-            actual: $result->output,
-        );
-    }
-
-    public function test_artisan_command_compiles_wire_workflow_to_json(): void
-    {
-        $this->artisan('superwire:compile', [ 'workflow' => __DIR__ . '/Stubs/greeting.wire' ])
-            ->expectsOutputToContain('"format": "superwire_workflow_compact_v1"')
-            ->assertSuccessful();
-
-        $definition = app(WorkflowCompiler::class)->compile(workflowPath: __DIR__ . '/Stubs/greeting.wire');
-
-        $this->assertSame(
-            expected: 'greeting',
-            actual: $definition->agents->first()->name,
-        );
-    }
-
-    public function test_it_accepts_tools_for_the_current_workflow_run(): void
-    {
-        FakeAgentRunner::fake([
-            'assistant' => function (AgentInvocation $invocation): array {
-
-                $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
-
-                return [ 'weather' => 'sunny' ];
-
-            },
-        ]);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
-            ->withTools([ new BoundSchemaTool(), new RetryWeatherTool() ])
-            ->run();
-
-        $this->assertSame(
-            expected: [ 'weather' => 'sunny' ],
-            actual: $result->output,
-        );
-    }
-
-    public function test_it_accepts_tool_class_strings_for_the_current_workflow_run(): void
-    {
-        FakeAgentRunner::fake([
-            'assistant' => function (AgentInvocation $invocation): array {
-
-                $this->assertCount(expectedCount: 2, haystack: $invocation->tools);
-
-                return [ 'weather' => 'sunny' ];
-
-            },
-        ]);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/tool_schema_retry.wire')
-            ->withTools([ BoundSchemaTool::class, RetryWeatherTool::class ])
-            ->run();
-
-        $this->assertSame(
-            expected: [ 'weather' => 'sunny' ],
-            actual: $result->output,
-        );
-    }
-
-    public function test_it_maps_workflow_output_into_class(): void
-    {
-        FakeAgentRunner::fake([
-            'customer_story' => 'customer',
-            'investor_story' => 'investor',
-            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
-        ]);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
-            ->mapInto(WorkflowMappedOutput::class)
-            ->run();
-
-        $this->assertInstanceOf(expected: WorkflowMappedOutput::class, actual: $result->output);
-        $this->assertSame(expected: 'Combine customer and investor.', actual: $result->output->review);
-    }
-
-    public function test_it_maps_workflow_output_using_from_array_factory(): void
-    {
-        FakeAgentRunner::fake([
-            'customer_story' => 'customer',
-            'investor_story' => 'investor',
-            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
-        ]);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
-            ->mapInto(WorkflowMappedOutputFromArray::class)
-            ->run();
-
-        $this->assertInstanceOf(expected: WorkflowMappedOutputFromArray::class, actual: $result->output);
-        $this->assertSame(expected: 'COMBINE CUSTOMER AND INVESTOR.', actual: $result->output->review);
-    }
-
-    public function test_it_can_run_workflow_agents_using_stream_mode(): void
-    {
-        $runner = new FakeStreamableAgentRunner(
-            responses: [ 'greeting' => 'request response' ],
-            streamText: 'stream response',
+        $events = iterator_to_array(
+            Workflow::fromSource('test')->inputs([ 'id' => 1 ])->stream(),
         );
 
-        app()->instance(AgentRunner::class, $runner);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
-            ->usingStreamMode()
-            ->run();
-
-        $this->assertSame(expected: [ 'greeting' => 'stream response' ], actual: $result->output);
-        $this->assertSame(expected: 'greeting', actual: $runner->streamInvocation?->agent->name);
+        $this->assertCount(2, $events);
+        $this->assertSame('workflow_started', $events[ 0 ]->kind->value);
+        $this->assertSame('workflow_completed', $events[ 1 ]->kind->value);
     }
 
-    public function test_it_can_run_workflow_agents_using_request_mode(): void
+    public function test_it_streams_to_result(): void
     {
-        config()->set('superwire.runtime.agent_mode', 'stream');
+        $sseBody = implode("\n\n", [
+            'data: {"kind":"workflow_started"}',
+            'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
+        ]) . "\n\n";
 
-        $runner = new FakeStreamableAgentRunner(
-            responses: [ 'greeting' => 'request response' ],
-            streamText: 'stream response',
-        );
-
-        app()->instance(AgentRunner::class, $runner);
-
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/greeting.wire')
-            ->usingRequestMode()
-            ->run();
-
-        $this->assertSame(expected: [ 'greeting' => 'request response' ], actual: $result->output);
-        $this->assertNull(actual: $runner->streamInvocation);
-    }
-
-    public function test_it_can_run_workflow_using_parallel_executor(): void
-    {
-        if (!function_exists('pcntl_fork')) {
-            $this->markTestSkipped('PCNTL is required for parallel workflow execution.');
-        }
-
-        FakeAgentRunner::fake([
-            'customer_story' => 'customer',
-            'investor_story' => 'investor',
-            'review' => fn (AgentInvocation $invocation): string => $invocation->prompt,
+        Http::fake([
+            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
         ]);
 
-        $result = Workflow::fromFile(__DIR__ . '/Stubs/parallel_batch.wire')
-            ->parallel()
-            ->run();
+        $result = Workflow::fromSource('test')
+            ->inputs([ 'id' => 1 ])
+            ->secrets([ 'key' => 'val' ])
+            ->streamToResult();
 
-        $this->assertSame(expected: [ 'review' => 'Combine customer and investor.' ], actual: $result->output);
+        $this->assertInstanceOf(WorkflowResult::class, $result);
+        $this->assertSame([ 'summary' => 'done' ], $result->output);
+        $this->assertCount(2, $result->history);
     }
 
-    public function test_it_can_select_parallel_executor_from_config(): void
+    public function test_workflow_is_immutable(): void
     {
-        config()->set('superwire.runtime.executor', 'parallel');
+        $original = Workflow::fromSource('test');
+        $withInputs = $original->inputs([ 'a' => 1 ]);
+        $withSecrets = $original->secrets([ 'b' => 2 ]);
 
-        $this->assertInstanceOf(expected: ParallelWorkflowExecutor::class, actual: app(\Superwire\Laravel\Contracts\WorkflowExecutor::class));
+        $this->assertNotSame($original, $withInputs);
+        $this->assertNotSame($original, $withSecrets);
+        $this->assertNotSame($withInputs, $withSecrets);
+    }
+
+    public function test_it_throws_for_nonexistent_output_class(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        Workflow::fromSource('test')->mapInto('NonExistentClass');
+    }
+
+    public function test_it_maps_output_into_class_with_from_method(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([
+                'output' => [ 'summary' => 'Test', 'themes' => [ [ 'theme' => 'a', 'times' => 1 ] ] ],
+            ], 200),
+        ]);
+
+        $result = Workflow::fromSource('test')
+            ->mapInto(StubMappedOutput::class)
+            ->run();
+
+        $this->assertInstanceOf(StubMappedOutput::class, $result->output);
+        $this->assertSame('Test', $result->output->summary);
+    }
+
+    public function test_it_maps_output_into_class_with_array_constructor(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([
+                'output' => [ 'hello', 'world' ],
+            ], 200),
+        ]);
+
+        $result = Workflow::fromSource('test')
+            ->mapInto(StubFromArrayOutput::class)
+            ->run();
+
+        $this->assertInstanceOf(StubFromArrayOutput::class, $result->output);
+        $this->assertSame('hello', $result->output->first);
+        $this->assertSame('world', $result->output->second);
+    }
+
+    public function test_it_returns_raw_output_when_no_mapInto(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([
+                'output' => [ 'summary' => 'raw' ],
+            ], 200),
+        ]);
+
+        $result = Workflow::fromSource('test')->run();
+
+        $this->assertSame([ 'summary' => 'raw' ], $result->output);
     }
 }

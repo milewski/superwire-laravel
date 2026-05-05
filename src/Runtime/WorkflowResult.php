@@ -11,7 +11,7 @@ final readonly class WorkflowResult implements Arrayable, JsonSerializable
 {
     public function __construct(
         public mixed $output,
-        public array $history,
+        public array $history = [],
         public array $context = [],
     )
     {

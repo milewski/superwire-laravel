@@ -4,47 +4,22 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel;
 
-use Illuminate\Support\Str;
+use Generator;
 use InvalidArgumentException;
-use Superwire\Laravel\Contracts\WorkflowCompiler;
-use Superwire\Laravel\Contracts\WorkflowExecutor;
-use Superwire\Laravel\Data\Workflow\WorkflowDefinition;
-use Superwire\Laravel\Enums\AgentMode;
-use Superwire\Laravel\Enums\OutputStrategy;
-use Superwire\Laravel\Enums\WorkflowExecutionMode;
-use Superwire\Laravel\Runtime\Executor\ParallelWorkflowExecutor;
-use Superwire\Laravel\Runtime\Executor\SerialWorkflowExecutor;
+use Superwire\Laravel\Runtime\ExecutorEvent;
+use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
 use Superwire\Laravel\Runtime\WorkflowResult;
-use Superwire\Laravel\Tools\AbstractTool;
 
 final class Workflow
 {
     private function __construct(
-        private readonly WorkflowDefinition $definition,
+        private readonly string $sourceBase64,
+        private readonly string $filePath,
         private array $inputs = [],
         private array $secrets = [],
-        private array $tools = [],
-        private ?AgentMode $agentMode = null,
-        private ?OutputStrategy $outputStrategy = null,
-        private ?WorkflowExecutionMode $executionMode = null,
         private ?string $outputClass = null,
     )
     {
-    }
-
-    public static function fromDefinition(WorkflowDefinition $definition): self
-    {
-        return new self($definition);
-    }
-
-    public static function fromArray(array $payload): self
-    {
-        return new self(WorkflowDefinition::fromArray($payload));
-    }
-
-    public static function fromJson(string $json): self
-    {
-        return new self(WorkflowDefinition::fromJson($json));
     }
 
     public static function fromFile(string $path): self
@@ -53,14 +28,21 @@ final class Workflow
             throw new InvalidArgumentException(sprintf('Workflow file `%s` does not exist.', $path));
         }
 
-        if (str_ends_with($path, '.wire')) {
-            return new self(app(WorkflowCompiler::class)->compile($path));
-        }
-
-        return self::fromJson((string) file_get_contents($path));
+        return new self(
+            sourceBase64: base64_encode((string) file_get_contents($path)),
+            filePath: $path,
+        );
     }
 
-    public function withInputs(array $inputs): self
+    public static function fromSource(string $source): self
+    {
+        return new self(
+            sourceBase64: base64_encode($source),
+            filePath: 'inline',
+        );
+    }
+
+    public function inputs(array $inputs): self
     {
         $workflow = clone $this;
         $workflow->inputs = $inputs;
@@ -68,7 +50,7 @@ final class Workflow
         return $workflow;
     }
 
-    public function withSecrets(array $secrets): self
+    public function secrets(array $secrets): self
     {
         $workflow = clone $this;
         $workflow->secrets = $secrets;
@@ -76,61 +58,10 @@ final class Workflow
         return $workflow;
     }
 
-    public function withTools(array $tools): self
-    {
-        $workflow = clone $this;
-        $workflow->tools = array_map(
-            callback: fn (AbstractTool|string $tool): AbstractTool => $this->resolveTool($tool),
-            array: $tools,
-        );
-
-        return $workflow;
-    }
-
-    public function usingRequestMode(): self
-    {
-        $workflow = clone $this;
-        $workflow->agentMode = AgentMode::Request;
-
-        return $workflow;
-    }
-
-    public function usingStreamMode(): self
-    {
-        $workflow = clone $this;
-        $workflow->agentMode = AgentMode::Stream;
-
-        return $workflow;
-    }
-
-    public function withStrategy(OutputStrategy $strategy): self
-    {
-        $workflow = clone $this;
-        $workflow->outputStrategy = $strategy;
-
-        return $workflow;
-    }
-
-    public function serial(): self
-    {
-        $workflow = clone $this;
-        $workflow->executionMode = WorkflowExecutionMode::Serial;
-
-        return $workflow;
-    }
-
-    public function parallel(): self
-    {
-        $workflow = clone $this;
-        $workflow->executionMode = WorkflowExecutionMode::Parallel;
-
-        return $workflow;
-    }
-
     public function mapInto(string $class): self
     {
         if (!class_exists($class)) {
-            throw new InvalidArgumentException(sprintf('Workflow output class `%s` does not exist.', $class));
+            throw new InvalidArgumentException(sprintf('Output class `%s` does not exist.', $class));
         }
 
         $workflow = clone $this;
@@ -142,13 +73,9 @@ final class Workflow
     public function run(): WorkflowResult
     {
         $result = $this->executor()->execute(
-            definition: $this->definition,
-            inputs: $this->inputs,
+            sourceBase64: $this->sourceBase64,
+            input: $this->inputs,
             secrets: $this->secrets,
-            tools: $this->tools,
-            runId: (string) Str::uuid(),
-            agentMode: $this->agentMode,
-            outputStrategy: $this->outputStrategy,
         );
 
         if ($this->outputClass === null) {
@@ -156,65 +83,60 @@ final class Workflow
         }
 
         return new WorkflowResult(
-            output: $this->mapOutput(output: $result->output, class: $this->outputClass),
+            output: $this->mapOutput($result->output),
             history: $result->history,
             context: $result->context,
         );
     }
 
-    public function definition(): WorkflowDefinition
+    /**
+     * @return Generator<ExecutorEvent>
+     */
+    public function stream(): Generator
     {
-        return $this->definition;
+        yield from $this->executor()->executeStream(
+            sourceBase64: $this->sourceBase64,
+            input: $this->inputs,
+            secrets: $this->secrets,
+        );
     }
 
-    private function executor(): WorkflowExecutor
+    public function streamToResult(): WorkflowResult
     {
-        return match ($this->executionMode) {
-            WorkflowExecutionMode::Serial => app(SerialWorkflowExecutor::class),
-            WorkflowExecutionMode::Parallel => app(ParallelWorkflowExecutor::class),
-            null => app(WorkflowExecutor::class),
-        };
+        return $this->executor()->executeStreamToResult(
+            sourceBase64: $this->sourceBase64,
+            input: $this->inputs,
+            secrets: $this->secrets,
+        );
     }
 
-    private function resolveTool(AbstractTool|string $tool): AbstractTool
+    public function filePath(): string
     {
-        if ($tool instanceof AbstractTool) {
-            return $tool;
-        }
-
-        if (!is_a($tool, AbstractTool::class, true)) {
-            throw new InvalidArgumentException('Workflow tools must extend ' . AbstractTool::class . '.');
-        }
-
-        return app($tool);
+        return $this->filePath;
     }
 
-    private function mapOutput(mixed $output, string $class): object
+    public function sourceBase64(): string
     {
+        return $this->sourceBase64;
+    }
+
+    private function mapOutput(mixed $output): mixed
+    {
+        $class = $this->outputClass;
+
         if (method_exists($class, 'from')) {
-
-            $mapped = $class::from($output);
-
-            if (is_object($mapped)) {
-                return $mapped;
-            }
-
+            return $class::from($output);
         }
 
-        if (method_exists($class, 'fromArray') && is_array($output)) {
-
-            $mapped = $class::fromArray($output);
-
-            if (is_object($mapped)) {
-                return $mapped;
-            }
-
+        if (is_array($output)) {
+            return new $class(...$output);
         }
 
-        if (!is_array($output)) {
-            return new $class($output);
-        }
+        return new $class($output);
+    }
 
-        return new $class(...$output);
+    private function executor(): RemoteWorkflowExecutor
+    {
+        return app(RemoteWorkflowExecutor::class);
     }
 }
