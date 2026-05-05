@@ -9,9 +9,10 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Enums\ExecutorEventKind;
 
-final readonly class RemoteWorkflowExecutor
+class RemoteWorkflowExecutor implements WorkflowExecutor
 {
     public function __construct(
         private string $baseUrl,

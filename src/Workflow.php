@@ -6,12 +6,16 @@ namespace Superwire\Laravel;
 
 use Generator;
 use InvalidArgumentException;
+use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Runtime\ExecutorEvent;
 use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
 use Superwire\Laravel\Runtime\WorkflowResult;
+use Superwire\Laravel\Testing\Fakes\WorkflowFake;
 
 final class Workflow
 {
+    private static ?WorkflowFake $fake = null;
+
     private function __construct(
         private readonly string $sourceBase64,
         private readonly string $filePath,
@@ -20,6 +24,23 @@ final class Workflow
         private ?string $outputClass = null,
     )
     {
+    }
+
+    /**
+     * @param array<string, mixed>|WorkflowFake $output
+     */
+    public static function fake(mixed $output = []): WorkflowFake
+    {
+        self::$fake = $output instanceof WorkflowFake
+            ? $output
+            : (new WorkflowFake())->stub($output);
+
+        return self::$fake;
+    }
+
+    public static function restoreFake(): void
+    {
+        self::$fake = null;
     }
 
     public static function fromFile(string $path): self
@@ -103,10 +124,20 @@ final class Workflow
 
     public function streamToResult(): WorkflowResult
     {
-        return $this->executor()->executeStreamToResult(
+        $result = $this->executor()->executeStreamToResult(
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
+        );
+
+        if ($this->outputClass === null) {
+            return $result;
+        }
+
+        return new WorkflowResult(
+            output: $this->mapOutput($result->output),
+            history: $result->history,
+            context: $result->context,
         );
     }
 
@@ -135,8 +166,8 @@ final class Workflow
         return new $class($output);
     }
 
-    private function executor(): RemoteWorkflowExecutor
+    private function executor(): WorkflowExecutor
     {
-        return app(RemoteWorkflowExecutor::class);
+        return self::$fake ?? app(RemoteWorkflowExecutor::class);
     }
 }
