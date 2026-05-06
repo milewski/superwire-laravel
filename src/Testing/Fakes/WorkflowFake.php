@@ -11,6 +11,7 @@ use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Data\Events\WorkflowCompletedEvent;
 use Superwire\Laravel\Data\Events\WorkflowStartedEvent;
 use Superwire\Laravel\Enums\ExecutorEventKind;
+use Superwire\Laravel\Enums\ModelResponseFormat;
 use Superwire\Laravel\Runtime\ExecutorEvent;
 use Superwire\Laravel\Runtime\WorkflowResult;
 
@@ -52,7 +53,7 @@ class WorkflowFake implements WorkflowExecutor
         return $this;
     }
 
-    public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function execute(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): WorkflowResult
     {
         $this->record($sourceBase64, $input, $secrets);
 
@@ -66,7 +67,7 @@ class WorkflowFake implements WorkflowExecutor
         );
     }
 
-    public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator
+    public function executeStream(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): Generator
     {
         $this->record($sourceBase64, $input, $secrets);
 
@@ -85,7 +86,7 @@ class WorkflowFake implements WorkflowExecutor
         );
     }
 
-    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): WorkflowResult
     {
         $this->record($sourceBase64, $input, $secrets);
 

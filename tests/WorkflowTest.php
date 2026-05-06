@@ -5,37 +5,11 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Request;
 use InvalidArgumentException;
+use Superwire\Laravel\Enums\ModelResponseFormat;
 use Superwire\Laravel\Runtime\WorkflowResult;
 use Superwire\Laravel\Workflow;
-
-final class StubMappedOutput
-{
-    public function __construct(
-        public string $summary,
-        public array $themes,
-    )
-    {
-    }
-
-    public static function from(array $data): self
-    {
-        return new self(
-            summary: $data[ 'summary' ],
-            themes: $data[ 'themes' ] ?? [],
-        );
-    }
-}
-
-final class StubFromArrayOutput
-{
-    public function __construct(
-        public string $first,
-        public string $second,
-    )
-    {
-    }
-}
 
 final class WorkflowTest extends TestCase
 {
@@ -79,12 +53,42 @@ final class WorkflowTest extends TestCase
         $this->assertSame(base64_encode('test'), $workflow->sourceBase64());
     }
 
+    public function test_it_sets_response_format_per_workflow(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
+        ]);
+
+        Workflow::fromSource('test')
+            ->responseFormat(ModelResponseFormat::JsonObject)
+            ->run();
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->data()[ 'options' ][ 'response_format' ] === 'json_object';
+        });
+    }
+
+    public function test_it_accepts_response_format_string(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
+        ]);
+
+        Workflow::fromSource('test')
+            ->responseFormat('json_schema')
+            ->run();
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->data()[ 'options' ][ 'response_format' ] === 'json_schema';
+        });
+    }
+
     public function test_it_executes_workflow_and_returns_result(): void
     {
         Http::fake([
             'localhost:3000/execute' => Http::response([
                 'output' => [ 'summary' => 'Test', 'themes' => [] ],
-            ], 200),
+            ]),
         ]);
 
         $result = Workflow::fromSource('test workflow')
@@ -142,9 +146,11 @@ final class WorkflowTest extends TestCase
         $original = Workflow::fromSource('test');
         $withInputs = $original->inputs([ 'a' => 1 ]);
         $withSecrets = $original->secrets([ 'b' => 2 ]);
+        $withResponseFormat = $original->responseFormat(ModelResponseFormat::JsonObject);
 
         $this->assertNotSame($original, $withInputs);
         $this->assertNotSame($original, $withSecrets);
+        $this->assertNotSame($original, $withResponseFormat);
         $this->assertNotSame($withInputs, $withSecrets);
     }
 
@@ -160,7 +166,7 @@ final class WorkflowTest extends TestCase
         Http::fake([
             'localhost:3000/execute' => Http::response([
                 'output' => [ 'summary' => 'Test', 'themes' => [ [ 'theme' => 'a', 'times' => 1 ] ] ],
-            ], 200),
+            ]),
         ]);
 
         $result = Workflow::fromSource('test')
@@ -176,7 +182,7 @@ final class WorkflowTest extends TestCase
         Http::fake([
             'localhost:3000/execute' => Http::response([
                 'output' => [ 'hello', 'world' ],
-            ], 200),
+            ]),
         ]);
 
         $result = Workflow::fromSource('test')
@@ -193,11 +199,39 @@ final class WorkflowTest extends TestCase
         Http::fake([
             'localhost:3000/execute' => Http::response([
                 'output' => [ 'summary' => 'raw' ],
-            ], 200),
+            ]),
         ]);
 
         $result = Workflow::fromSource('test')->run();
 
         $this->assertSame([ 'summary' => 'raw' ], $result->output);
+    }
+}
+
+final class StubMappedOutput
+{
+    public function __construct(
+        public string $summary,
+        public array $themes,
+    )
+    {
+    }
+
+    public static function from(array $data): self
+    {
+        return new self(
+            summary: $data[ 'summary' ],
+            themes: $data[ 'themes' ] ?? [],
+        );
+    }
+}
+
+final class StubFromArrayOutput
+{
+    public function __construct(
+        public string $first,
+        public string $second,
+    )
+    {
     }
 }

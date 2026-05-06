@@ -4,10 +4,12 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests\Runtime;
 
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use stdClass;
 use Superwire\Laravel\Enums\ExecutorEventKind;
+use Superwire\Laravel\Enums\ModelResponseFormat;
 use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
 use Superwire\Laravel\Tests\TestCase;
 
@@ -27,7 +29,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
         Http::fake([
             'localhost:3000/execute' => Http::response([
                 'output' => [ 'summary' => 'Test summary', 'themes' => [] ],
-            ], 200),
+            ]),
         ]);
 
         $source = base64_encode('workflow test { output: string }');
@@ -41,18 +43,56 @@ final class RemoteWorkflowExecutorTest extends TestCase
     public function test_it_sends_correct_payload_structure(): void
     {
         Http::fake([
-            'localhost:3000/execute' => Http::response([ 'output' => null ], 200),
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
         ]);
 
         $this->executor->execute(base64_encode('test'), [ 'id' => 1 ], [ 'key' => 'val' ]);
 
-        Http::assertSent(function ($request): bool {
+        Http::assertSent(function (Request $request): bool {
+
+            $data = $request->data();
 
             return $request->url() === 'http://localhost:3000/execute'
-                && $request->data()[ 'workflow_source_base64' ] !== null
-                && $request->data()[ 'input' ] === [ 'id' => 1 ]
-                && $request->data()[ 'secrets' ] === [ 'key' => 'val' ];
+                && $data[ 'workflow_source_base64' ] !== null
+                && $data[ 'input' ] === [ 'id' => 1 ]
+                && $data[ 'secrets' ] === [ 'key' => 'val' ]
+                && $data[ 'options' ][ 'response_format' ] === ModelResponseFormat::Auto->value;
 
+        });
+    }
+
+    public function test_it_sends_configured_response_format(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
+        ]);
+
+        $executor = new RemoteWorkflowExecutor(
+            baseUrl: 'http://localhost:3000',
+            timeout: 300,
+            responseFormat: ModelResponseFormat::JsonObject,
+        );
+
+        $executor->execute(base64_encode('test'));
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->data()[ 'options' ][ 'response_format' ] === 'json_object';
+        });
+    }
+
+    public function test_it_sends_response_format_override(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
+        ]);
+
+        $this->executor->execute(
+            sourceBase64: base64_encode('test'),
+            responseFormat: ModelResponseFormat::InstructionOnly,
+        );
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->data()[ 'options' ][ 'response_format' ] === 'instruction_only';
         });
     }
 
@@ -71,12 +111,12 @@ final class RemoteWorkflowExecutorTest extends TestCase
     public function test_it_sends_empty_objects_for_empty_inputs_and_secrets(): void
     {
         Http::fake([
-            'localhost:3000/execute' => Http::response([ 'output' => null ], 200),
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
         ]);
 
         $this->executor->execute(base64_encode('test'));
 
-        Http::assertSent(function ($request): bool {
+        Http::assertSent(function (Request $request): bool {
 
             $data = $request->data();
 
@@ -87,14 +127,23 @@ final class RemoteWorkflowExecutorTest extends TestCase
 
     public function test_it_streams_events_from_sse_response(): void
     {
-        $sseBody = implode("\n\n", [
-            'data: {"kind":"workflow_started"}',
-            'data: {"kind":"agent_started","agent_name":"analyzer","data":{"model":"gpt-4","tools":[]}}',
-            'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
-        ]) . "\n\n";
+        $separator = "\n\n";
+        $sseBody = implode(
+            separator: $separator,
+            array: [
+                'data: {"kind":"workflow_started"}',
+                'data: {"kind":"agent_started","agent_name":"analyzer","data":{"model":"gpt-4","tools":[]}}',
+                'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
+            ],
+        );
+
+        $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
+            'localhost:3000/execute/stream' => Http::response(
+                body: $sseBody,
+                headers: [ 'Content-Type' => 'text/event-stream' ],
+            ),
         ]);
 
         $events = iterator_to_array($this->executor->executeStream(base64_encode('test'), [ 'id' => 1 ]));
@@ -119,17 +168,30 @@ final class RemoteWorkflowExecutorTest extends TestCase
 
     public function test_it_collects_stream_events_into_result(): void
     {
-        $sseBody = implode("\n\n", [
-            'data: {"kind":"workflow_started"}',
-            'data: {"kind":"agent_started","agent_name":"analyzer","data":{"model":"gpt-4","tools":[]}}',
-            'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
-        ]) . "\n\n";
+        $separator = "\n\n";
+        $sseBody = implode(
+            separator: $separator,
+            array: [
+                'data: {"kind":"workflow_started"}',
+                'data: {"kind":"agent_started","agent_name":"analyzer","data":{"model":"gpt-4","tools":[]}}',
+                'data: {"kind":"workflow_completed","data":{"output":{"summary":"done"}}}',
+            ],
+        );
+
+        $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
+            'localhost:3000/execute/stream' => Http::response(
+                body: $sseBody,
+                headers: [ 'Content-Type' => 'text/event-stream' ],
+            ),
         ]);
 
-        $result = $this->executor->executeStreamToResult(base64_encode('test'), [ 'id' => 1 ], [ 'key' => 'val' ]);
+        $result = $this->executor->executeStreamToResult(
+            sourceBase64: base64_encode('test'),
+            input: [ 'id' => 1 ],
+            secrets: [ 'key' => 'val' ],
+        );
 
         $this->assertSame([ 'summary' => 'done' ], $result->output);
         $this->assertCount(3, $result->history);
@@ -138,13 +200,22 @@ final class RemoteWorkflowExecutorTest extends TestCase
 
     public function test_it_throws_when_stream_contains_failure_event(): void
     {
-        $sseBody = implode("\n\n", [
-            'data: {"kind":"workflow_started"}',
-            'data: {"kind":"workflow_failed","message":"Model unavailable"}',
-        ]) . "\n\n";
+        $separator = "\n\n";
+        $sseBody = implode(
+            separator: $separator,
+            array: [
+                'data: {"kind":"workflow_started"}',
+                'data: {"kind":"workflow_failed","message":"Model unavailable"}',
+            ],
+        );
+
+        $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
+            'localhost:3000/execute/stream' => Http::response(
+                body: $sseBody,
+                headers: [ 'Content-Type' => 'text/event-stream' ],
+            ),
         ]);
 
         $this->expectException(RuntimeException::class);

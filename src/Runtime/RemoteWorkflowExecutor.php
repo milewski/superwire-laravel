@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Enums\ExecutorEventKind;
+use Superwire\Laravel\Enums\ModelResponseFormat;
 
 class RemoteWorkflowExecutor implements WorkflowExecutor
 {
     public function __construct(
         private string $baseUrl,
         private int $timeout,
+        private ModelResponseFormat $responseFormat = ModelResponseFormat::Auto,
     )
     {
     }
@@ -24,13 +26,9 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function execute(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): WorkflowResult
     {
-        $response = $this->client()->post("{$this->baseUrl}/execute", [
-            'workflow_source_base64' => $sourceBase64,
-            'input' => $input ?: (object) [],
-            'secrets' => $secrets ?: (object) [],
-        ]);
+        $response = $this->client()->post("{$this->baseUrl}/execute", $this->payload($sourceBase64, $input, $secrets, $responseFormat));
 
         if ($response->failed()) {
 
@@ -57,13 +55,14 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator
+    public function executeStream(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): Generator
     {
-        $response = $this->client()->withOptions([ 'stream' => true ])->post("{$this->baseUrl}/execute/stream", [
-            'workflow_source_base64' => $sourceBase64,
-            'input' => $input ?: (object) [],
-            'secrets' => $secrets ?: (object) [],
-        ]);
+        $response = $this->client()->withOptions([ 'stream' => true ])->post("{$this->baseUrl}/execute/stream", $this->payload(
+            $sourceBase64,
+            $input,
+            $secrets,
+            $responseFormat,
+        ));
 
         if ($response->failed()) {
 
@@ -81,12 +80,12 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = [], ?ModelResponseFormat $responseFormat = null): WorkflowResult
     {
         $events = [];
         $output = null;
 
-        foreach ($this->executeStream($sourceBase64, $input, $secrets) as $event) {
+        foreach ($this->executeStream($sourceBase64, $input, $secrets, $responseFormat) as $event) {
 
             $events[] = $event;
 
@@ -118,5 +117,22 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     private function client(): PendingRequest
     {
         return Http::timeout($this->timeout);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function payload(string $sourceBase64, array $input, array $secrets, ?ModelResponseFormat $responseFormat): array
+    {
+        $responseFormat ??= $this->responseFormat;
+
+        return [
+            'workflow_source_base64' => $sourceBase64,
+            'input' => $input ?: (object) [],
+            'secrets' => $secrets ?: (object) [],
+            'options' => [
+                'response_format' => $responseFormat->value,
+            ],
+        ];
     }
 }
