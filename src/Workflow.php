@@ -7,7 +7,6 @@ namespace Superwire\Laravel;
 use Generator;
 use InvalidArgumentException;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
-use Superwire\Laravel\Enums\ModelResponseFormat;
 use Superwire\Laravel\Runtime\ExecutorEvent;
 use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
 use Superwire\Laravel\Runtime\WorkflowResult;
@@ -23,7 +22,6 @@ final class Workflow
         private array $inputs = [],
         private array $secrets = [],
         private ?string $outputClass = null,
-        private ModelResponseFormat $responseFormat = ModelResponseFormat::Auto,
     )
     {
     }
@@ -93,21 +91,12 @@ final class Workflow
         return $workflow;
     }
 
-    public function responseFormat(ModelResponseFormat $responseFormat): self
-    {
-        $workflow = clone $this;
-        $workflow->responseFormat = ModelResponseFormat::fromConfig($responseFormat);
-
-        return $workflow;
-    }
-
     public function run(): WorkflowResult
     {
         $result = $this->executor()->execute(
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
-            responseFormat: $this->responseFormat,
         );
 
         if ($this->outputClass === null) {
@@ -130,7 +119,6 @@ final class Workflow
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
-            responseFormat: $this->responseFormat,
         );
     }
 
@@ -140,7 +128,6 @@ final class Workflow
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
-            responseFormat: $this->responseFormat,
         );
 
         if ($this->outputClass === null) {

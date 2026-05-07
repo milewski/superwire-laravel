@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use stdClass;
 use Superwire\Laravel\Enums\ExecutorEventKind;
-use Superwire\Laravel\Enums\ModelResponseFormat;
 use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
 use Superwire\Laravel\Tests\TestCase;
 
@@ -56,43 +55,8 @@ final class RemoteWorkflowExecutorTest extends TestCase
                 && $data[ 'workflow_source_base64' ] !== null
                 && $data[ 'input' ] === [ 'id' => 1 ]
                 && $data[ 'secrets' ] === [ 'key' => 'val' ]
-                && $data[ 'options' ][ 'response_format' ] === ModelResponseFormat::Auto->value;
+                && !array_key_exists('options', $data);
 
-        });
-    }
-
-    public function test_it_sends_configured_response_format(): void
-    {
-        Http::fake([
-            'localhost:3000/execute' => Http::response([ 'output' => null ]),
-        ]);
-
-        $executor = new RemoteWorkflowExecutor(
-            baseUrl: 'http://localhost:3000',
-            timeout: 300,
-            responseFormat: ModelResponseFormat::JsonObject,
-        );
-
-        $executor->execute(base64_encode('test'));
-
-        Http::assertSent(function (Request $request): bool {
-            return $request->data()[ 'options' ][ 'response_format' ] === 'json_object';
-        });
-    }
-
-    public function test_it_sends_response_format_override(): void
-    {
-        Http::fake([
-            'localhost:3000/execute' => Http::response([ 'output' => null ]),
-        ]);
-
-        $this->executor->execute(
-            sourceBase64: base64_encode('test'),
-            responseFormat: ModelResponseFormat::InstructionOnly,
-        );
-
-        Http::assertSent(function (Request $request): bool {
-            return $request->data()[ 'options' ][ 'response_format' ] === 'instruction_only';
         });
     }
 
