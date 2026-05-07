@@ -72,6 +72,18 @@ final class RemoteWorkflowExecutorTest extends TestCase
         $this->executor->execute(base64_encode('test'));
     }
 
+    public function test_it_adds_clear_hint_when_execute_error_indicates_missing_required_value(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response('Missing required secret `api_key`', 400),
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('required workflow input, secret, or environment value was not provided');
+
+        $this->executor->execute(base64_encode('test'));
+    }
+
     public function test_it_sends_empty_objects_for_empty_inputs_and_secrets(): void
     {
         Http::fake([
@@ -184,6 +196,32 @@ final class RemoteWorkflowExecutorTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Workflow execution failed: Model unavailable');
+
+        $this->executor->executeStreamToResult(base64_encode('test'));
+    }
+
+    public function test_it_adds_clear_hint_when_stream_failure_indicates_missing_required_value(): void
+    {
+        $separator = "\n\n";
+        $sseBody = implode(
+            separator: $separator,
+            array: [
+                'data: {"kind":"workflow_started"}',
+                'data: {"kind":"workflow_failed","message":"Missing required input `project_id`"}',
+            ],
+        );
+
+        $sseBody .= $separator;
+
+        Http::fake([
+            'localhost:3000/execute/stream' => Http::response(
+                body: $sseBody,
+                headers: [ 'Content-Type' => 'text/event-stream' ],
+            ),
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('required workflow input, secret, or environment value was not provided');
 
         $this->executor->executeStreamToResult(base64_encode('test'));
     }

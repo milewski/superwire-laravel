@@ -30,11 +30,11 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
 
         if ($response->failed()) {
 
-            throw new RuntimeException(sprintf(
+            throw new RuntimeException($this->formatMissingValueErrorMessage(sprintf(
                 'Workflow execution failed with status %d: %s',
                 $response->status(),
                 $response->body(),
-            ));
+            )));
 
         }
 
@@ -63,11 +63,11 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
 
         if ($response->failed()) {
 
-            throw new RuntimeException(sprintf(
+            throw new RuntimeException($this->formatMissingValueErrorMessage(sprintf(
                 'Workflow stream request failed with status %d: %s',
                 $response->status(),
                 $response->body(),
-            ));
+            )));
 
         }
 
@@ -92,10 +92,10 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
 
             if ($event->kind === ExecutorEventKind::WorkflowFailed) {
 
-                throw new RuntimeException(sprintf(
+                throw new RuntimeException($this->formatMissingValueErrorMessage(sprintf(
                     'Workflow execution failed: %s',
                     $event->event->message ?? 'Unknown error',
-                ));
+                )));
 
             }
 
@@ -126,5 +126,22 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
             'input' => $input ?: (object) [],
             'secrets' => $secrets ?: (object) [],
         ];
+    }
+
+    private function formatMissingValueErrorMessage(string $message): string
+    {
+        if (!$this->containsMissingRequiredValueError($message)) {
+            return $message;
+        }
+
+        return sprintf(
+            '%s This usually means a required workflow input, secret, or environment value was not provided. Check your ->inputs([...]) and ->secrets([...]) values.',
+            $message,
+        );
+    }
+
+    private function containsMissingRequiredValueError(string $message): bool
+    {
+        return preg_match('/(missing|required|not provided|undefined|not found|unknown).*(input|secret|env|environment|variable|key)|(input|secret|env|environment|variable|key).*(missing|required|not provided|undefined|not found|unknown)/i', $message) === 1;
     }
 }
