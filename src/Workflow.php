@@ -9,7 +9,9 @@ use InvalidArgumentException;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Runtime\ExecutorEvent;
 use Superwire\Laravel\Runtime\RemoteWorkflowExecutor;
+use Superwire\Laravel\Runtime\WorkflowFormatResult;
 use Superwire\Laravel\Runtime\WorkflowResult;
+use Superwire\Laravel\Runtime\WorkflowValidationResult;
 use Superwire\Laravel\Testing\Fakes\WorkflowFake;
 
 final class Workflow
@@ -139,6 +141,20 @@ final class Workflow
             history: $result->history,
             context: $result->context,
         );
+    }
+
+    public function validate(): WorkflowValidationResult
+    {
+        return $this->executor()->validate(
+            sourceBase64: $this->sourceBase64,
+            input: $this->inputs,
+            secrets: $this->secrets,
+        );
+    }
+
+    public function format(): WorkflowFormatResult
+    {
+        return $this->executor()->format(sourceBase64: $this->sourceBase64);
     }
 
     public function filePath(): string

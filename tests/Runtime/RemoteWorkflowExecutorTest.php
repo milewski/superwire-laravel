@@ -225,4 +225,44 @@ final class RemoteWorkflowExecutorTest extends TestCase
 
         $this->executor->executeStreamToResult(base64_encode('test'));
     }
+
+    public function test_it_validates_workflow_without_execution(): void
+    {
+        Http::fake([
+            'localhost:3000/validate' => Http::response([
+                'valid' => true,
+            ]),
+        ]);
+
+        $result = $this->executor->validate(base64_encode('workflow test'), [ 'project_id' => 1 ], [ 'api_key' => 'secret' ]);
+
+        $this->assertSame([ 'project_id' => 1 ], $result->context[ 'input' ]);
+        $this->assertSame([ 'api_key' => 'secret' ], $result->context[ 'secrets' ]);
+    }
+
+    public function test_it_formats_workflow_via_dedicated_endpoint(): void
+    {
+        Http::fake([
+            'localhost:3000/format' => Http::response([
+                'valid' => true,
+                'formatted_workflow_source' => "output {\n  greeting: \"ok\"\n}",
+            ]),
+        ]);
+
+        $result = $this->executor->format(base64_encode('output { greeting: "ok" }'));
+
+        $this->assertSame("output {\n  greeting: \"ok\"\n}", $result->formattedSource);
+
+        Http::assertSent(function (Request $request): bool {
+
+            $data = $request->data();
+
+            return $request->url() === 'http://localhost:3000/format'
+                && isset($data[ 'workflow_source_base64' ])
+                && !array_key_exists('input', $data)
+                && !array_key_exists('secrets', $data)
+                && !array_key_exists('options', $data);
+
+        });
+    }
 }

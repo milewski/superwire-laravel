@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Superwire\Laravel\Contracts\WorkflowExecutor;
 use Superwire\Laravel\Enums\ExecutorEventKind;
+use Superwire\Laravel\Runtime\WorkflowFormatResult;
 
 class RemoteWorkflowExecutor implements WorkflowExecutor
 {
@@ -111,6 +112,55 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
         );
     }
 
+    /**
+     * @throws ConnectionException
+     */
+    public function validate(string $sourceBase64, array $input = [], array $secrets = []): WorkflowValidationResult
+    {
+        $response = $this->client()->post("{$this->baseUrl}/validate", $this->payload($sourceBase64, $input, $secrets));
+
+        if ($response->failed()) {
+
+            throw new RuntimeException($this->formatMissingValueErrorMessage(sprintf(
+                'Workflow validation failed with status %d: %s',
+                $response->status(),
+                $response->body(),
+            )));
+
+        }
+
+        $json = $response->json();
+
+        return new WorkflowValidationResult(
+            context: [
+                'input' => $input,
+                'secrets' => $secrets,
+            ],
+        );
+    }
+
+    /**
+     * @throws ConnectionException
+     */
+    public function format(string $sourceBase64): WorkflowFormatResult
+    {
+        $response = $this->client()->post("{$this->baseUrl}/format", $this->sourcePayload($sourceBase64));
+
+        if ($response->failed()) {
+
+            throw new RuntimeException($this->formatMissingValueErrorMessage(sprintf(
+                'Workflow formatting failed with status %d: %s',
+                $response->status(),
+                $response->body(),
+            )));
+
+        }
+
+        $json = $response->json();
+
+        return new WorkflowFormatResult(formattedSource: $json[ 'formatted_workflow_source' ] ?? '');
+    }
+
     private function client(): PendingRequest
     {
         return Http::timeout($this->timeout);
@@ -125,6 +175,16 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
             'workflow_source_base64' => $sourceBase64,
             'input' => $input ?: (object) [],
             'secrets' => $secrets ?: (object) [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sourcePayload(string $sourceBase64): array
+    {
+        return [
+            'workflow_source_base64' => $sourceBase64,
         ];
     }
 

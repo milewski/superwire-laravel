@@ -12,7 +12,9 @@ use Superwire\Laravel\Data\Events\WorkflowCompletedEvent;
 use Superwire\Laravel\Data\Events\WorkflowStartedEvent;
 use Superwire\Laravel\Enums\ExecutorEventKind;
 use Superwire\Laravel\Runtime\ExecutorEvent;
+use Superwire\Laravel\Runtime\WorkflowFormatResult;
 use Superwire\Laravel\Runtime\WorkflowResult;
+use Superwire\Laravel\Runtime\WorkflowValidationResult;
 
 class WorkflowFake implements WorkflowExecutor
 {
@@ -97,6 +99,26 @@ class WorkflowFake implements WorkflowExecutor
                 'secrets' => $secrets,
             ],
         );
+    }
+
+    public function validate(string $sourceBase64, array $input = [], array $secrets = []): WorkflowValidationResult
+    {
+        $this->record($sourceBase64, $input, $secrets);
+
+        return new WorkflowValidationResult(
+            context: [
+                'input' => $input,
+                'secrets' => $secrets,
+            ],
+        );
+    }
+
+    public function format(string $sourceBase64): WorkflowFormatResult
+    {
+        $this->record($sourceBase64, [], []);
+        $decodedSource = base64_decode($sourceBase64, true);
+
+        return new WorkflowFormatResult(formattedSource: $decodedSource === false ? '' : $decodedSource);
     }
 
     public function assertExecuted(int $count = -1): self

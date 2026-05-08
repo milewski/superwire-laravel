@@ -172,6 +172,37 @@ final class WorkflowTest extends TestCase
 
         $this->assertSame([ 'summary' => 'raw' ], $result->output);
     }
+
+    public function test_it_validates_workflow(): void
+    {
+        Http::fake([
+            'localhost:3000/validate' => Http::response([
+                'valid' => true,
+            ]),
+        ]);
+
+        $result = Workflow::fromSource('test workflow')
+            ->inputs([ 'project_id' => 1 ])
+            ->secrets([ 'api_key' => 'test' ])
+            ->validate();
+
+        $this->assertSame([ 'project_id' => 1 ], $result->context[ 'input' ]);
+        $this->assertSame([ 'api_key' => 'test' ], $result->context[ 'secrets' ]);
+    }
+
+    public function test_it_formats_workflow_during_validation(): void
+    {
+        Http::fake([
+            'localhost:3000/format' => Http::response([
+                'valid' => true,
+                'formatted_workflow_source' => "output {\n  greeting: \"ok\"\n}",
+            ]),
+        ]);
+
+        $result = Workflow::fromSource('output { greeting: "ok" }')->format();
+
+        $this->assertSame("output {\n  greeting: \"ok\"\n}", $result->formattedSource);
+    }
 }
 
 final class StubMappedOutput
