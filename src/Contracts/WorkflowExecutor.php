@@ -21,7 +21,7 @@ interface WorkflowExecutor
 
     public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult;
 
-    public function validate(string $sourceBase64, array $input = [], array $secrets = []): WorkflowValidationResult;
+    public function validate(string $sourceBase64, array $secrets = []): WorkflowValidationResult;
 
     public function format(string $sourceBase64): WorkflowFormatResult;
 }

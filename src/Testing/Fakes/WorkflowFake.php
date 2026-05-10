@@ -101,13 +101,12 @@ class WorkflowFake implements WorkflowExecutor
         );
     }
 
-    public function validate(string $sourceBase64, array $input = [], array $secrets = []): WorkflowValidationResult
+    public function validate(string $sourceBase64, array $secrets = []): WorkflowValidationResult
     {
-        $this->record($sourceBase64, $input, $secrets);
+        $this->record($sourceBase64, [], $secrets);
 
         return new WorkflowValidationResult(
             context: [
-                'input' => $input,
                 'secrets' => $secrets,
             ],
         );

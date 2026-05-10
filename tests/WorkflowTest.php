@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Tests;
 
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Superwire\Laravel\Runtime\WorkflowResult;
@@ -182,12 +183,21 @@ final class WorkflowTest extends TestCase
         ]);
 
         $result = Workflow::fromSource('test workflow')
-            ->inputs([ 'project_id' => 1 ])
             ->secrets([ 'api_key' => 'test' ])
             ->validate();
 
-        $this->assertSame([ 'project_id' => 1 ], $result->context[ 'input' ]);
         $this->assertSame([ 'api_key' => 'test' ], $result->context[ 'secrets' ]);
+
+        Http::assertSent(function (Request $request): bool {
+
+            $payloadData = $request->data();
+
+            return $request->url() === 'http://localhost:3000/validate'
+                && isset($payloadData[ 'workflow_source_base64' ])
+                && !array_key_exists('input', $payloadData)
+                && $payloadData[ 'secrets' ] === [ 'api_key' => 'test' ];
+
+        });
     }
 
     public function test_it_formats_workflow_during_validation(): void

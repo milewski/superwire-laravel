@@ -147,7 +147,6 @@ final class Workflow
     {
         return $this->executor()->validate(
             sourceBase64: $this->sourceBase64,
-            input: $this->inputs,
             secrets: $this->secrets,
         );
     }

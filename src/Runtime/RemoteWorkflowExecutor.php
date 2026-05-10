@@ -115,9 +115,9 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function validate(string $sourceBase64, array $input = [], array $secrets = []): WorkflowValidationResult
+    public function validate(string $sourceBase64, array $secrets = []): WorkflowValidationResult
     {
-        $response = $this->client()->post("{$this->baseUrl}/validate", $this->payload($sourceBase64, $input, $secrets));
+        $response = $this->client()->post("{$this->baseUrl}/validate", $this->validationPayload($sourceBase64, $secrets));
 
         if ($response->failed()) {
 
@@ -133,7 +133,6 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
 
         return new WorkflowValidationResult(
             context: [
-                'input' => $input,
                 'secrets' => $secrets,
             ],
         );
@@ -185,6 +184,17 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     {
         return [
             'workflow_source_base64' => $sourceBase64,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validationPayload(string $sourceBase64, array $secrets): array
+    {
+        return [
+            'workflow_source_base64' => $sourceBase64,
+            'secrets' => $secrets ?: (object) [],
         ];
     }
 

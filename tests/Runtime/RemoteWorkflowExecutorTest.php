@@ -234,10 +234,20 @@ final class RemoteWorkflowExecutorTest extends TestCase
             ]),
         ]);
 
-        $result = $this->executor->validate(base64_encode('workflow test'), [ 'project_id' => 1 ], [ 'api_key' => 'secret' ]);
+        $result = $this->executor->validate(base64_encode('workflow test'), [ 'api_key' => 'secret' ]);
 
-        $this->assertSame([ 'project_id' => 1 ], $result->context[ 'input' ]);
         $this->assertSame([ 'api_key' => 'secret' ], $result->context[ 'secrets' ]);
+
+        Http::assertSent(function (Request $request): bool {
+
+            $payloadData = $request->data();
+
+            return $request->url() === 'http://localhost:3000/validate'
+                && isset($payloadData[ 'workflow_source_base64' ])
+                && !array_key_exists('input', $payloadData)
+                && $payloadData[ 'secrets' ] === [ 'api_key' => 'secret' ];
+
+        });
     }
 
     public function test_it_formats_workflow_via_dedicated_endpoint(): void
