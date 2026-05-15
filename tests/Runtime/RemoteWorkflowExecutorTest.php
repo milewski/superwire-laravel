@@ -116,7 +116,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
         $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response(
+            'localhost:3000/execute' => Http::response(
                 body: $sseBody,
                 headers: [ 'Content-Type' => 'text/event-stream' ],
             ),
@@ -133,7 +133,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
     public function test_it_throws_on_failed_stream_request(): void
     {
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response('Bad Request', 400),
+            'localhost:3000/execute' => Http::response('Bad Request', 400),
         ]);
 
         $this->expectException(RuntimeException::class);
@@ -157,7 +157,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
         $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response(
+            'localhost:3000/execute' => Http::response(
                 body: $sseBody,
                 headers: [ 'Content-Type' => 'text/event-stream' ],
             ),
@@ -188,7 +188,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
         $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response(
+            'localhost:3000/execute' => Http::response(
                 body: $sseBody,
                 headers: [ 'Content-Type' => 'text/event-stream' ],
             ),
@@ -214,7 +214,7 @@ final class RemoteWorkflowExecutorTest extends TestCase
         $sseBody .= $separator;
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response(
+            'localhost:3000/execute' => Http::response(
                 body: $sseBody,
                 headers: [ 'Content-Type' => 'text/event-stream' ],
             ),

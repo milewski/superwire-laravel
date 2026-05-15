@@ -77,7 +77,7 @@ final class WorkflowTest extends TestCase
         ]) . "\n\n";
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
+            'localhost:3000/execute' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
         ]);
 
         $events = iterator_to_array(
@@ -97,7 +97,7 @@ final class WorkflowTest extends TestCase
         ]) . "\n\n";
 
         Http::fake([
-            'localhost:3000/execute/stream' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
+            'localhost:3000/execute' => Http::response($sseBody, 200, [ 'Content-Type' => 'text/event-stream' ]),
         ]);
 
         $result = Workflow::fromSource('test')

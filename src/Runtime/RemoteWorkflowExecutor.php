@@ -27,7 +27,7 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
      */
     public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
     {
-        $response = $this->client()->post("{$this->baseUrl}/execute", $this->payload($sourceBase64, $input, $secrets));
+        $response = $this->jsonClient()->post("{$this->baseUrl}/execute", $this->payload($sourceBase64, $input, $secrets));
 
         if ($response->failed()) {
 
@@ -56,7 +56,7 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
      */
     public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator
     {
-        $response = $this->client()->withOptions([ 'stream' => true ])->post("{$this->baseUrl}/execute/stream", $this->payload(
+        $response = $this->eventStreamClient()->withOptions([ 'stream' => true ])->post("{$this->baseUrl}/execute", $this->payload(
             $sourceBase64,
             $input,
             $secrets,
@@ -163,6 +163,16 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     private function client(): PendingRequest
     {
         return Http::timeout($this->timeout);
+    }
+
+    private function jsonClient(): PendingRequest
+    {
+        return $this->client()->acceptJson();
+    }
+
+    private function eventStreamClient(): PendingRequest
+    {
+        return $this->client()->accept('text/event-stream');
     }
 
     /**
