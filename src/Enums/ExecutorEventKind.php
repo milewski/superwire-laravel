@@ -13,6 +13,12 @@ enum ExecutorEventKind: string
     case ToolCallStarted = 'tool_call_started';
     case ToolCallFailed = 'tool_call_failed';
     case ToolCallCompleted = 'tool_call_completed';
+    case McpToolSchemaFetchStarted = 'mcp_tool_schema_fetch_started';
+    case McpToolSchemaFetchFailed = 'mcp_tool_schema_fetch_failed';
+    case McpToolSchemaFetchCompleted = 'mcp_tool_schema_fetch_completed';
+    case McpToolValidationStarted = 'mcp_tool_validation_started';
+    case McpToolValidationFailed = 'mcp_tool_validation_failed';
+    case McpToolValidationCompleted = 'mcp_tool_validation_completed';
     case McpCallStarted = 'mcp_call_started';
     case McpCallFailed = 'mcp_call_failed';
     case McpCallCompleted = 'mcp_call_completed';

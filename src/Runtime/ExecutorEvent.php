@@ -9,6 +9,12 @@ use Superwire\Laravel\Data\Events\AgentStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
 use Superwire\Laravel\Data\Events\McpCallStartedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchCompletedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchFailedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchStartedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationCompletedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationFailedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationStartedEvent;
 use Superwire\Laravel\Data\Events\ToolCallCompletedEvent;
 use Superwire\Laravel\Data\Events\ToolCallFailedEvent;
 use Superwire\Laravel\Data\Events\ToolCallStartedEvent;
@@ -21,7 +27,7 @@ use Superwire\Laravel\Enums\ExecutorEventKind;
 final readonly class ExecutorEvent
 {
     /**
-     * @param AgentCompletedEvent|AgentStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
+     * @param AgentCompletedEvent|AgentStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
      */
     public function __construct(
         public ExecutorEventKind $kind,
@@ -46,6 +52,12 @@ final readonly class ExecutorEvent
             ExecutorEventKind::ToolCallStarted => ToolCallStartedEvent::fromArray($data),
             ExecutorEventKind::ToolCallCompleted => ToolCallCompletedEvent::fromArray($data),
             ExecutorEventKind::ToolCallFailed => ToolCallFailedEvent::fromArray($data),
+            ExecutorEventKind::McpToolSchemaFetchStarted => McpToolSchemaFetchStartedEvent::fromArray($data),
+            ExecutorEventKind::McpToolSchemaFetchCompleted => McpToolSchemaFetchCompletedEvent::fromArray($data),
+            ExecutorEventKind::McpToolSchemaFetchFailed => McpToolSchemaFetchFailedEvent::fromArray($data),
+            ExecutorEventKind::McpToolValidationStarted => McpToolValidationStartedEvent::fromArray($data),
+            ExecutorEventKind::McpToolValidationCompleted => McpToolValidationCompletedEvent::fromArray($data),
+            ExecutorEventKind::McpToolValidationFailed => McpToolValidationFailedEvent::fromArray($data),
             ExecutorEventKind::McpCallStarted => McpCallStartedEvent::fromArray($data),
             ExecutorEventKind::McpCallCompleted => McpCallCompletedEvent::fromArray($data),
             ExecutorEventKind::McpCallFailed => McpCallFailedEvent::fromArray($data),

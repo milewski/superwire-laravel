@@ -9,6 +9,12 @@ use Superwire\Laravel\Data\Events\AgentStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
 use Superwire\Laravel\Data\Events\McpCallStartedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchCompletedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchFailedEvent;
+use Superwire\Laravel\Data\Events\McpToolSchemaFetchStartedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationCompletedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationFailedEvent;
+use Superwire\Laravel\Data\Events\McpToolValidationStartedEvent;
 use Superwire\Laravel\Data\Events\ToolCallCompletedEvent;
 use Superwire\Laravel\Data\Events\ToolCallFailedEvent;
 use Superwire\Laravel\Data\Events\ToolCallStartedEvent;
@@ -22,6 +28,35 @@ use Superwire\Laravel\Tests\TestCase;
 
 final class ExecutorEventTest extends TestCase
 {
+    public function test_it_supports_all_executor_event_kinds(): void
+    {
+        $eventKindValues = array_map(
+            static fn (ExecutorEventKind $executorEventKind): string => $executorEventKind->value,
+            ExecutorEventKind::cases(),
+        );
+
+        $this->assertSame([
+            'workflow_started',
+            'workflow_planned',
+            'agent_started',
+            'agent_completed',
+            'tool_call_started',
+            'tool_call_failed',
+            'tool_call_completed',
+            'mcp_tool_schema_fetch_started',
+            'mcp_tool_schema_fetch_failed',
+            'mcp_tool_schema_fetch_completed',
+            'mcp_tool_validation_started',
+            'mcp_tool_validation_failed',
+            'mcp_tool_validation_completed',
+            'mcp_call_started',
+            'mcp_call_failed',
+            'mcp_call_completed',
+            'workflow_completed',
+            'workflow_failed',
+        ], $eventKindValues);
+    }
+
     public function test_it_creates_workflow_started_event(): void
     {
         $event = ExecutorEvent::fromArray([ 'kind' => 'workflow_started' ]);
@@ -120,6 +155,111 @@ final class ExecutorEventTest extends TestCase
         $this->assertInstanceOf(ToolCallFailedEvent::class, $event->event);
         $this->assertSame('fetch_data', $event->event->toolName);
         $this->assertSame('timeout', $event->event->error);
+    }
+
+    public function test_it_creates_mcp_tool_schema_fetch_started_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_schema_fetch_started',
+            'data' => [ 'server_name' => 'filesystem' ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolSchemaFetchStarted, $event->kind);
+        $this->assertInstanceOf(McpToolSchemaFetchStartedEvent::class, $event->event);
+        $this->assertSame('filesystem', $event->event->serverName);
+        $this->assertSame([
+            'kind' => 'mcp_tool_schema_fetch_started',
+            'data' => [ 'server_name' => 'filesystem' ],
+        ], $event->toArray());
+    }
+
+    public function test_it_creates_mcp_tool_schema_fetch_completed_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_schema_fetch_completed',
+            'data' => [ 'server_name' => 'filesystem', 'tool_count' => 3, 'duration_ms' => 42 ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolSchemaFetchCompleted, $event->kind);
+        $this->assertInstanceOf(McpToolSchemaFetchCompletedEvent::class, $event->event);
+        $this->assertSame('filesystem', $event->event->serverName);
+        $this->assertSame(3, $event->event->toolCount);
+        $this->assertSame(42, $event->event->durationMs);
+    }
+
+    public function test_it_creates_mcp_tool_schema_fetch_failed_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_schema_fetch_failed',
+            'data' => [ 'server_name' => 'filesystem', 'error' => [ 'message' => 'timeout' ], 'duration_ms' => 42 ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolSchemaFetchFailed, $event->kind);
+        $this->assertInstanceOf(McpToolSchemaFetchFailedEvent::class, $event->event);
+        $this->assertSame('filesystem', $event->event->serverName);
+        $this->assertSame([ 'message' => 'timeout' ], $event->event->error);
+        $this->assertSame(42, $event->event->durationMs);
+    }
+
+    public function test_it_creates_mcp_tool_validation_started_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_validation_started',
+            'agent_name' => 'analyzer',
+            'data' => [
+                'tool_name' => 'search',
+                'arguments' => [ 'query' => 'superwire' ],
+                'input_schema' => [ 'type' => 'object' ],
+            ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolValidationStarted, $event->kind);
+        $this->assertSame('analyzer', $event->agentName);
+        $this->assertInstanceOf(McpToolValidationStartedEvent::class, $event->event);
+        $this->assertSame('search', $event->event->toolName);
+        $this->assertSame([ 'query' => 'superwire' ], $event->event->arguments);
+        $this->assertSame([ 'type' => 'object' ], $event->event->inputSchema);
+    }
+
+    public function test_it_creates_mcp_tool_validation_started_event_from_params_alias(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_validation_started',
+            'data' => [ 'tool_name' => 'search', 'params' => [ 'query' => 'superwire' ] ],
+        ]);
+
+        $this->assertSame([ 'query' => 'superwire' ], $event->event->arguments);
+    }
+
+    public function test_it_creates_mcp_tool_validation_completed_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_validation_completed',
+            'agent_name' => 'analyzer',
+            'data' => [ 'tool_name' => 'search', 'duration_ms' => 12 ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolValidationCompleted, $event->kind);
+        $this->assertSame('analyzer', $event->agentName);
+        $this->assertInstanceOf(McpToolValidationCompletedEvent::class, $event->event);
+        $this->assertSame('search', $event->event->toolName);
+        $this->assertSame(12, $event->event->durationMs);
+    }
+
+    public function test_it_creates_mcp_tool_validation_failed_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'mcp_tool_validation_failed',
+            'agent_name' => 'analyzer',
+            'data' => [ 'tool_name' => 'search', 'error' => 'invalid arguments', 'duration_ms' => 12 ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::McpToolValidationFailed, $event->kind);
+        $this->assertSame('analyzer', $event->agentName);
+        $this->assertInstanceOf(McpToolValidationFailedEvent::class, $event->event);
+        $this->assertSame('search', $event->event->toolName);
+        $this->assertSame('invalid arguments', $event->event->error);
+        $this->assertSame(12, $event->event->durationMs);
     }
 
     public function test_it_creates_mcp_call_started_event(): void

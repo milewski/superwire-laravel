@@ -28,6 +28,18 @@ final class SseResponseTest extends TestCase
         $this->assertSame(ExecutorEventKind::WorkflowStarted, $events[ 0 ]->kind);
     }
 
+    public function test_it_parses_mcp_tool_schema_fetch_sse_event(): void
+    {
+        $response = $this->createSseResponse(
+            "data: {\"kind\":\"mcp_tool_schema_fetch_started\",\"data\":{\"server_name\":\"filesystem\"}}\n\n",
+        );
+        $events = iterator_to_array(SseResponse::parse($response));
+
+        $this->assertCount(1, $events);
+        $this->assertSame(ExecutorEventKind::McpToolSchemaFetchStarted, $events[ 0 ]->kind);
+        $this->assertSame('filesystem', $events[ 0 ]->event->serverName);
+    }
+
     public function test_it_parses_multiple_sse_events(): void
     {
         $sseData = implode("\n\n", [
