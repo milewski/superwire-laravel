@@ -12,6 +12,7 @@ final readonly class AgentStartedEvent
     public function __construct(
         public string $model,
         public array $tools,
+        public ?int $iterationIndex = null,
     )
     {
     }
@@ -21,14 +22,21 @@ final readonly class AgentStartedEvent
         return new self(
             model: $data[ 'model' ],
             tools: $data[ 'tools' ] ?? [],
+            iterationIndex: $data[ 'iteration_index' ] ?? null,
         );
     }
 
     public function toArray(): array
     {
-        return [
+        $data = [
             'model' => $this->model,
             'tools' => $this->tools,
         ];
+
+        if ($this->iterationIndex !== null) {
+            $data[ 'iteration_index' ] = $this->iterationIndex;
+        }
+
+        return $data;
     }
 }

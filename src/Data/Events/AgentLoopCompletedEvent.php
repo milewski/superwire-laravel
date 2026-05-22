@@ -4,12 +4,12 @@ declare(strict_types = 1);
 
 namespace Superwire\Laravel\Data\Events;
 
-final readonly class AgentCompletedEvent
+final readonly class AgentLoopCompletedEvent
 {
     public function __construct(
         public mixed $output,
-        public int $durationMs = 0,
-        public ?int $iterationIndex = null,
+        public int $durationMs,
+        public int $iterationCount,
     )
     {
     }
@@ -19,24 +19,16 @@ final readonly class AgentCompletedEvent
         return new self(
             output: $data[ 'output' ] ?? null,
             durationMs: $data[ 'duration_ms' ] ?? 0,
-            iterationIndex: $data[ 'iteration_index' ] ?? null,
+            iterationCount: $data[ 'iteration_count' ] ?? 0,
         );
     }
 
     public function toArray(): array
     {
-        $data = [
+        return [
             'output' => $this->output,
+            'duration_ms' => $this->durationMs,
+            'iteration_count' => $this->iterationCount,
         ];
-
-        if ($this->durationMs > 0) {
-            $data[ 'duration_ms' ] = $this->durationMs;
-        }
-
-        if ($this->iterationIndex !== null) {
-            $data[ 'iteration_index' ] = $this->iterationIndex;
-        }
-
-        return $data;
     }
 }

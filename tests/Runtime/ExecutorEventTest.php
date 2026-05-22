@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Runtime;
 
 use Superwire\Laravel\Data\Events\AgentCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
@@ -38,6 +40,8 @@ final class ExecutorEventTest extends TestCase
         $this->assertSame([
             'workflow_started',
             'workflow_planned',
+            'agent_loop_started',
+            'agent_loop_completed',
             'agent_started',
             'agent_completed',
             'tool_call_started',
@@ -91,7 +95,7 @@ final class ExecutorEventTest extends TestCase
         $event = ExecutorEvent::fromArray([
             'kind' => 'agent_started',
             'agent_name' => 'analyzer',
-            'data' => [ 'model' => 'gpt-4', 'tools' => [ 'tool_a', 'tool_b' ] ],
+            'data' => [ 'model' => 'gpt-4', 'tools' => [ 'tool_a', 'tool_b' ], 'iteration_index' => 2 ],
         ]);
 
         $this->assertSame(ExecutorEventKind::AgentStarted, $event->kind);
@@ -99,6 +103,49 @@ final class ExecutorEventTest extends TestCase
         $this->assertInstanceOf(AgentStartedEvent::class, $event->event);
         $this->assertSame('gpt-4', $event->event->model);
         $this->assertSame([ 'tool_a', 'tool_b' ], $event->event->tools);
+        $this->assertSame(2, $event->event->iterationIndex);
+    }
+
+    public function test_it_creates_agent_loop_started_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'agent_loop_started',
+            'agent_name' => 'writer',
+            'data' => [
+                'iteration_count' => 2,
+                'iterations' => [
+                    [ 'iteration_index' => 0, 'bindings' => [ 'item' => 'a' ] ],
+                    [ 'iteration_index' => 1, 'bindings' => [ 'item' => 'b' ] ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::AgentLoopStarted, $event->kind);
+        $this->assertSame('writer', $event->agentName);
+        $this->assertInstanceOf(AgentLoopStartedEvent::class, $event->event);
+        $this->assertSame(2, $event->event->iterationCount);
+        $this->assertSame('a', $event->event->iterations[ 0 ][ 'bindings' ][ 'item' ]);
+    }
+
+    public function test_it_creates_agent_loop_completed_event(): void
+    {
+        $event = ExecutorEvent::fromArray([
+            'kind' => 'agent_loop_completed',
+            'agent_name' => 'writer',
+            'data' => [
+                'output' => [ [ 'value' => 'a' ], [ 'value' => 'b' ] ],
+                'duration_ms' => 42,
+                'iteration_count' => 2,
+            ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::AgentLoopCompleted, $event->kind);
+        $this->assertSame('writer', $event->agentName);
+        $this->assertInstanceOf(AgentLoopCompletedEvent::class, $event->event);
+        $this->assertSame([ [ 'value' => 'a' ], [ 'value' => 'b' ] ], $event->event->output);
+        $this->assertSame(42, $event->event->durationMs);
+        $this->assertSame(2, $event->event->iterationCount);
+        $this->assertSame([ [ 'value' => 'a' ], [ 'value' => 'b' ] ], $event->output());
     }
 
     public function test_it_creates_agent_completed_event(): void
@@ -106,12 +153,14 @@ final class ExecutorEventTest extends TestCase
         $event = ExecutorEvent::fromArray([
             'kind' => 'agent_completed',
             'agent_name' => 'analyzer',
-            'data' => [ 'output' => [ 'summary' => 'done' ] ],
+            'data' => [ 'output' => [ 'summary' => 'done' ], 'duration_ms' => 24, 'iteration_index' => 1 ],
         ]);
 
         $this->assertSame(ExecutorEventKind::AgentCompleted, $event->kind);
         $this->assertInstanceOf(AgentCompletedEvent::class, $event->event);
         $this->assertSame([ 'summary' => 'done' ], $event->event->output);
+        $this->assertSame(24, $event->event->durationMs);
+        $this->assertSame(1, $event->event->iterationIndex);
         $this->assertSame([ 'summary' => 'done' ], $event->output());
     }
 

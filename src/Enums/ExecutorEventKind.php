@@ -8,6 +8,8 @@ enum ExecutorEventKind: string
 {
     case WorkflowStarted = 'workflow_started';
     case WorkflowPlanned = 'workflow_planned';
+    case AgentLoopStarted = 'agent_loop_started';
+    case AgentLoopCompleted = 'agent_loop_completed';
     case AgentStarted = 'agent_started';
     case AgentCompleted = 'agent_completed';
     case ToolCallStarted = 'tool_call_started';

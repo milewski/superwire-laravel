@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime;
 
 use Superwire\Laravel\Data\Events\AgentCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
@@ -27,7 +29,7 @@ use Superwire\Laravel\Enums\ExecutorEventKind;
 final readonly class ExecutorEvent
 {
     /**
-     * @param AgentCompletedEvent|AgentStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
+     * @param AgentCompletedEvent|AgentLoopCompletedEvent|AgentLoopStartedEvent|AgentStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
      */
     public function __construct(
         public ExecutorEventKind $kind,
@@ -47,6 +49,8 @@ final readonly class ExecutorEvent
         $event = match ($kind) {
             ExecutorEventKind::WorkflowStarted => new WorkflowStartedEvent(),
             ExecutorEventKind::WorkflowPlanned => WorkflowPlannedEvent::fromArray($data),
+            ExecutorEventKind::AgentLoopStarted => AgentLoopStartedEvent::fromArray($data),
+            ExecutorEventKind::AgentLoopCompleted => AgentLoopCompletedEvent::fromArray($data),
             ExecutorEventKind::AgentStarted => AgentStartedEvent::fromArray($data),
             ExecutorEventKind::AgentCompleted => AgentCompletedEvent::fromArray($data),
             ExecutorEventKind::ToolCallStarted => ToolCallStartedEvent::fromArray($data),
@@ -84,6 +88,10 @@ final readonly class ExecutorEvent
         }
 
         if ($this->event instanceof AgentCompletedEvent) {
+            return $this->event->output;
+        }
+
+        if ($this->event instanceof AgentLoopCompletedEvent) {
             return $this->event->output;
         }
 
