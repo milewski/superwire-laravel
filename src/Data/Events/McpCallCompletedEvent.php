@@ -10,6 +10,11 @@ final readonly class McpCallCompletedEvent
         public string $operation,
         public string $targetName,
         public mixed $result,
+        public ?string $serverName = null,
+        public ?string $itemName = null,
+        public mixed $arguments = null,
+        public mixed $rawResult = null,
+        public ?int $durationMs = null,
     )
     {
     }
@@ -20,6 +25,11 @@ final readonly class McpCallCompletedEvent
             operation: $data[ 'operation' ],
             targetName: $data[ 'target_name' ],
             result: $data[ 'result' ] ?? null,
+            serverName: $data[ 'server_name' ] ?? null,
+            itemName: $data[ 'item_name' ] ?? null,
+            arguments: $data[ 'arguments' ] ?? $data[ 'params' ] ?? null,
+            rawResult: $data[ 'raw_result' ] ?? $data[ 'output' ] ?? null,
+            durationMs: $data[ 'duration_ms' ] ?? null,
         );
     }
 
@@ -28,7 +38,13 @@ final readonly class McpCallCompletedEvent
         return [
             'operation' => $this->operation,
             'target_name' => $this->targetName,
+            'server_name' => $this->serverName,
+            'item_name' => $this->itemName,
+            'arguments' => $this->arguments,
+            'params' => $this->arguments,
             'result' => $this->result,
+            'raw_result' => $this->rawResult,
+            'duration_ms' => $this->durationMs,
         ];
     }
 }

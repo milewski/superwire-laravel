@@ -45,6 +45,7 @@ final readonly class WorkflowPlannedEvent
     public function __construct(
         public array $agentExecutionOrder,
         public array $mcpImports,
+        public mixed $steps = [],
     )
     {
     }
@@ -57,6 +58,7 @@ final readonly class WorkflowPlannedEvent
                 static fn (array $import): PlannedMcpImport => PlannedMcpImport::fromArray($import),
                 $data[ 'mcp_imports' ] ?? [],
             ),
+            steps: $data[ 'steps' ] ?? [],
         );
     }
 
@@ -68,6 +70,7 @@ final readonly class WorkflowPlannedEvent
                 static fn (PlannedMcpImport $import): array => $import->toArray(),
                 $this->mcpImports,
             ),
+            'steps' => $this->steps,
         ];
     }
 }

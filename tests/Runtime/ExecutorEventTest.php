@@ -80,6 +80,19 @@ final class ExecutorEventTest extends TestCase
                 'mcp_imports' => [
                     [ 'name' => 'res', 'kind' => 'resource', 'server_name' => 'local', 'item_name' => 'data' ],
                 ],
+                'steps' => [
+                    [
+                        'type' => 'workflow_dynamic',
+                        'calls' => [
+                            [
+                                'operation' => 'call',
+                                'target_name' => 'video_recording_answers',
+                                'server_name' => 'local',
+                                'item_name' => 'fetch_qualitative_question_answers',
+                            ],
+                        ],
+                    ],
+                ],
             ],
         ]);
 
@@ -88,6 +101,7 @@ final class ExecutorEventTest extends TestCase
         $this->assertSame([ 'analyzer', 'aggregator' ], $event->event->agentExecutionOrder);
         $this->assertCount(1, $event->event->mcpImports);
         $this->assertSame('res', $event->event->mcpImports[ 0 ]->name);
+        $this->assertSame('video_recording_answers', $event->event->steps[ 0 ][ 'calls' ][ 0 ][ 'target_name' ]);
     }
 
     public function test_it_creates_agent_started_event(): void
@@ -316,37 +330,72 @@ final class ExecutorEventTest extends TestCase
     {
         $event = ExecutorEvent::fromArray([
             'kind' => 'mcp_call_started',
-            'data' => [ 'operation' => 'read_resource', 'target_name' => 'data', 'arguments' => [] ],
+            'data' => [
+                'operation' => 'call',
+                'target_name' => 'video_recording_answers',
+                'server_name' => 'local',
+                'item_name' => 'fetch_qualitative_question_answers',
+                'params' => [ 'task_types' => [ 'video_recording' ] ],
+                'input_schema' => [ 'type' => 'object' ],
+            ],
         ]);
 
         $this->assertSame(ExecutorEventKind::McpCallStarted, $event->kind);
         $this->assertInstanceOf(McpCallStartedEvent::class, $event->event);
-        $this->assertSame('read_resource', $event->event->operation);
-        $this->assertSame('data', $event->event->targetName);
+        $this->assertSame('call', $event->event->operation);
+        $this->assertSame('video_recording_answers', $event->event->targetName);
+        $this->assertSame('local', $event->event->serverName);
+        $this->assertSame('fetch_qualitative_question_answers', $event->event->itemName);
+        $this->assertSame([ 'task_types' => [ 'video_recording' ] ], $event->event->arguments);
+        $this->assertSame([ 'type' => 'object' ], $event->event->inputSchema);
     }
 
     public function test_it_creates_mcp_call_completed_event(): void
     {
         $event = ExecutorEvent::fromArray([
             'kind' => 'mcp_call_completed',
-            'data' => [ 'operation' => 'read_resource', 'target_name' => 'data', 'result' => [ 'items' => [] ] ],
+            'data' => [
+                'operation' => 'call',
+                'target_name' => 'data',
+                'server_name' => 'local',
+                'item_name' => 'fetch_data',
+                'arguments' => [ 'id' => 1 ],
+                'result' => [ 'items' => [] ],
+                'raw_result' => [ 'content' => [] ],
+                'duration_ms' => 12,
+            ],
         ]);
 
         $this->assertSame(ExecutorEventKind::McpCallCompleted, $event->kind);
         $this->assertInstanceOf(McpCallCompletedEvent::class, $event->event);
         $this->assertSame([ 'items' => [] ], $event->event->result);
+        $this->assertSame('fetch_data', $event->event->itemName);
+        $this->assertSame([ 'id' => 1 ], $event->event->arguments);
+        $this->assertSame([ 'content' => [] ], $event->event->rawResult);
+        $this->assertSame(12, $event->event->durationMs);
     }
 
     public function test_it_creates_mcp_call_failed_event(): void
     {
         $event = ExecutorEvent::fromArray([
             'kind' => 'mcp_call_failed',
-            'data' => [ 'operation' => 'read_resource', 'target_name' => 'data', 'error' => 'not found' ],
+            'data' => [
+                'operation' => 'call',
+                'target_name' => 'data',
+                'server_name' => 'local',
+                'item_name' => 'fetch_data',
+                'params' => [ 'id' => 1 ],
+                'error' => 'not found',
+                'duration_ms' => 12,
+            ],
         ]);
 
         $this->assertSame(ExecutorEventKind::McpCallFailed, $event->kind);
         $this->assertInstanceOf(McpCallFailedEvent::class, $event->event);
         $this->assertSame('not found', $event->event->error);
+        $this->assertSame('fetch_data', $event->event->itemName);
+        $this->assertSame([ 'id' => 1 ], $event->event->arguments);
+        $this->assertSame(12, $event->event->durationMs);
     }
 
     public function test_it_creates_workflow_completed_event(): void
