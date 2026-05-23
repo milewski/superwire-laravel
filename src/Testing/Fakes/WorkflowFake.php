@@ -26,7 +26,7 @@ class WorkflowFake implements WorkflowExecutor
     private ?Closure $fakeCallback = null;
 
     /**
-     * @var array<int, array{source: string, input: array, secrets: array}>
+     * @var array<int, array{source: string, input: array, secrets: array, cache_key: ?string}>
      */
     private array $recorded = [];
 
@@ -54,9 +54,9 @@ class WorkflowFake implements WorkflowExecutor
         return $this;
     }
 
-    public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function execute(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult
     {
-        $this->record($sourceBase64, $input, $secrets);
+        $this->record($sourceBase64, $input, $secrets, $cacheKey);
 
         return new WorkflowResult(
             output: $this->resolveOutput($sourceBase64, $input, $secrets),
@@ -68,9 +68,9 @@ class WorkflowFake implements WorkflowExecutor
         );
     }
 
-    public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator
+    public function executeStream(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): Generator
     {
-        $this->record($sourceBase64, $input, $secrets);
+        $this->record($sourceBase64, $input, $secrets, $cacheKey);
 
         $output = $this->resolveOutput($sourceBase64, $input, $secrets);
 
@@ -87,9 +87,9 @@ class WorkflowFake implements WorkflowExecutor
         );
     }
 
-    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult
     {
-        $this->record($sourceBase64, $input, $secrets);
+        $this->record($sourceBase64, $input, $secrets, $cacheKey);
 
         return new WorkflowResult(
             output: $this->resolveOutput($sourceBase64, $input, $secrets),
@@ -170,7 +170,7 @@ class WorkflowFake implements WorkflowExecutor
     }
 
     /**
-     * @return array<int, array{source: string, input: array, secrets: array}>
+     * @return array<int, array{source: string, input: array, secrets: array, cache_key: ?string}>
      */
     public function recorded(): array
     {
@@ -182,12 +182,13 @@ class WorkflowFake implements WorkflowExecutor
         return count($this->recorded);
     }
 
-    private function record(string $sourceBase64, array $input, array $secrets): void
+    private function record(string $sourceBase64, array $input, array $secrets, ?string $cacheKey = null): void
     {
         $this->recorded[] = [
             'source' => $sourceBase64,
             'input' => $input,
             'secrets' => $secrets,
+            'cache_key' => $cacheKey,
         ];
     }
 

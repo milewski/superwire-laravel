@@ -52,6 +52,25 @@ final class WorkflowTest extends TestCase
         $this->assertSame(base64_encode('test'), $workflow->sourceBase64());
     }
 
+    public function test_it_sets_cache_key_fluently(): void
+    {
+        $fake = Workflow::fake([ 'summary' => 'cached' ]);
+
+        try {
+
+            Workflow::fromSource('test')
+                ->cacheKey('tenant-1:report-9')
+                ->run();
+
+        } finally {
+
+            Workflow::restoreFake();
+
+        }
+
+        $this->assertSame('tenant-1:report-9', $fake->recorded()[0][ 'cache_key' ]);
+    }
+
     public function test_it_executes_workflow_and_returns_result(): void
     {
         Http::fake([

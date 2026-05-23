@@ -25,9 +25,9 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function execute(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult
     {
-        $response = $this->jsonClient()->post("{$this->baseUrl}/execute", $this->payload($sourceBase64, $input, $secrets));
+        $response = $this->jsonClient()->post("{$this->baseUrl}/execute", $this->payload($sourceBase64, $input, $secrets, $cacheKey));
 
         if ($response->failed()) {
 
@@ -54,12 +54,13 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator
+    public function executeStream(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): Generator
     {
         $response = $this->eventStreamClient()->withOptions([ 'stream' => true ])->post("{$this->baseUrl}/execute", $this->payload(
             $sourceBase64,
             $input,
             $secrets,
+            $cacheKey,
         ));
 
         if ($response->failed()) {
@@ -78,12 +79,12 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @throws ConnectionException
      */
-    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult
+    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult
     {
         $events = [];
         $output = null;
 
-        foreach ($this->executeStream($sourceBase64, $input, $secrets) as $event) {
+        foreach ($this->executeStream($sourceBase64, $input, $secrets, $cacheKey) as $event) {
 
             $events[] = $event;
 
@@ -178,13 +179,19 @@ class RemoteWorkflowExecutor implements WorkflowExecutor
     /**
      * @return array<string, mixed>
      */
-    private function payload(string $sourceBase64, array $input, array $secrets): array
+    private function payload(string $sourceBase64, array $input, array $secrets, ?string $cacheKey = null): array
     {
-        return [
+        $payload = [
             'workflow_source_base64' => $sourceBase64,
             'input' => $input ?: (object) [],
             'secrets' => $secrets ?: (object) [],
         ];
+
+        if ($cacheKey !== null && trim($cacheKey) !== '') {
+            $payload[ 'options' ] = [ 'cache_key' => $cacheKey ];
+        }
+
+        return $payload;
     }
 
     /**

@@ -23,6 +23,7 @@ final class Workflow
         private readonly string $filePath,
         private array $inputs = [],
         private array $secrets = [],
+        private ?string $cacheKey = null,
         private ?string $outputClass = null,
     )
     {
@@ -81,6 +82,14 @@ final class Workflow
         return $workflow;
     }
 
+    public function cacheKey(string $cacheKey): self
+    {
+        $workflow = clone $this;
+        $workflow->cacheKey = $cacheKey;
+
+        return $workflow;
+    }
+
     public function mapInto(string $class): self
     {
         if (!class_exists($class)) {
@@ -99,6 +108,7 @@ final class Workflow
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
+            cacheKey: $this->cacheKey,
         );
 
         if ($this->outputClass === null) {
@@ -121,6 +131,7 @@ final class Workflow
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
+            cacheKey: $this->cacheKey,
         );
     }
 
@@ -130,6 +141,7 @@ final class Workflow
             sourceBase64: $this->sourceBase64,
             input: $this->inputs,
             secrets: $this->secrets,
+            cacheKey: $this->cacheKey,
         );
 
         if ($this->outputClass === null) {

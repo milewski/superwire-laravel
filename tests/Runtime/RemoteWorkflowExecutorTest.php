@@ -60,6 +60,23 @@ final class RemoteWorkflowExecutorTest extends TestCase
         });
     }
 
+    public function test_it_sends_cache_key_when_provided(): void
+    {
+        Http::fake([
+            'localhost:3000/execute' => Http::response([ 'output' => null ]),
+        ]);
+
+        $this->executor->execute(base64_encode('test'), [ 'id' => 1 ], [ 'key' => 'val' ], 'tenant-1:report-9');
+
+        Http::assertSent(function (Request $request): bool {
+
+            $data = $request->data();
+
+            return $data[ 'options' ] === [ 'cache_key' => 'tenant-1:report-9' ];
+
+        });
+    }
+
     public function test_it_throws_on_failed_execute_request(): void
     {
         Http::fake([

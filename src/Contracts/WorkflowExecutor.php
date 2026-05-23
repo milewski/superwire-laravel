@@ -12,14 +12,14 @@ use Superwire\Laravel\Runtime\WorkflowValidationResult;
 
 interface WorkflowExecutor
 {
-    public function execute(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult;
+    public function execute(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult;
 
     /**
      * @return Generator<ExecutorEvent>
      */
-    public function executeStream(string $sourceBase64, array $input = [], array $secrets = []): Generator;
+    public function executeStream(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): Generator;
 
-    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = []): WorkflowResult;
+    public function executeStreamToResult(string $sourceBase64, array $input = [], array $secrets = [], ?string $cacheKey = null): WorkflowResult;
 
     public function validate(string $sourceBase64, array $secrets = []): WorkflowValidationResult;
 
