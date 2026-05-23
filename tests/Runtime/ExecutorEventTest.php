@@ -153,7 +153,7 @@ final class ExecutorEventTest extends TestCase
         $event = ExecutorEvent::fromArray([
             'kind' => 'agent_completed',
             'agent_name' => 'analyzer',
-            'data' => [ 'output' => [ 'summary' => 'done' ], 'duration_ms' => 24, 'iteration_index' => 1 ],
+            'data' => [ 'output' => [ 'summary' => 'done' ], 'duration_ms' => 24, 'iteration_index' => 1, 'cache_hit' => true ],
         ]);
 
         $this->assertSame(ExecutorEventKind::AgentCompleted, $event->kind);
@@ -161,6 +161,7 @@ final class ExecutorEventTest extends TestCase
         $this->assertSame([ 'summary' => 'done' ], $event->event->output);
         $this->assertSame(24, $event->event->durationMs);
         $this->assertSame(1, $event->event->iterationIndex);
+        $this->assertTrue($event->event->cacheHit);
         $this->assertSame([ 'summary' => 'done' ], $event->output());
     }
 

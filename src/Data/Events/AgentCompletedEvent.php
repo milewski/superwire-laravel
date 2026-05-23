@@ -10,6 +10,7 @@ final readonly class AgentCompletedEvent
         public mixed $output,
         public int $durationMs = 0,
         public ?int $iterationIndex = null,
+        public bool $cacheHit = false,
     )
     {
     }
@@ -20,6 +21,7 @@ final readonly class AgentCompletedEvent
             output: $data[ 'output' ] ?? null,
             durationMs: $data[ 'duration_ms' ] ?? 0,
             iterationIndex: $data[ 'iteration_index' ] ?? null,
+            cacheHit: $data[ 'cache_hit' ] ?? false,
         );
     }
 
@@ -35,6 +37,10 @@ final readonly class AgentCompletedEvent
 
         if ($this->iterationIndex !== null) {
             $data[ 'iteration_index' ] = $this->iterationIndex;
+        }
+
+        if ($this->cacheHit) {
+            $data[ 'cache_hit' ] = true;
         }
 
         return $data;
