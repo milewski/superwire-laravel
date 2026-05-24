@@ -8,6 +8,9 @@ use Superwire\Laravel\Data\Events\AgentCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionCompletedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionFailedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
 use Superwire\Laravel\Data\Events\McpCallStartedEvent;
@@ -42,6 +45,9 @@ final class ExecutorEventTest extends TestCase
             'workflow_planned',
             'agent_loop_started',
             'agent_loop_completed',
+            'context_compaction_started',
+            'context_compaction_completed',
+            'context_compaction_failed',
             'agent_started',
             'agent_completed',
             'tool_call_started',
@@ -59,6 +65,41 @@ final class ExecutorEventTest extends TestCase
             'workflow_completed',
             'workflow_failed',
         ], $eventKindValues);
+    }
+
+    public function test_it_creates_context_compaction_events(): void
+    {
+        $started = ExecutorEvent::fromArray([
+            'kind' => 'context_compaction_started',
+            'agent_name' => 'summarize',
+            'data' => [ 'model' => 'qwen-flash', 'source_agent_name' => 'research' ],
+        ]);
+        $completed = ExecutorEvent::fromArray([
+            'kind' => 'context_compaction_completed',
+            'agent_name' => 'summarize',
+            'data' => [ 'output' => 'compact summary', 'duration_ms' => 12 ],
+        ]);
+        $failed = ExecutorEvent::fromArray([
+            'kind' => 'context_compaction_failed',
+            'agent_name' => 'summarize',
+            'message' => 'failed to compact',
+            'data' => [ 'duration_ms' => 10 ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::ContextCompactionStarted, $started->kind);
+        $this->assertInstanceOf(ContextCompactionStartedEvent::class, $started->event);
+        $this->assertSame('qwen-flash', $started->event->model);
+        $this->assertSame('research', $started->event->sourceAgentName);
+
+        $this->assertSame(ExecutorEventKind::ContextCompactionCompleted, $completed->kind);
+        $this->assertInstanceOf(ContextCompactionCompletedEvent::class, $completed->event);
+        $this->assertSame('compact summary', $completed->event->output);
+        $this->assertSame(12, $completed->event->durationMs);
+
+        $this->assertSame(ExecutorEventKind::ContextCompactionFailed, $failed->kind);
+        $this->assertInstanceOf(ContextCompactionFailedEvent::class, $failed->event);
+        $this->assertSame('failed to compact', $failed->event->message);
+        $this->assertSame(10, $failed->event->durationMs);
     }
 
     public function test_it_creates_workflow_started_event(): void

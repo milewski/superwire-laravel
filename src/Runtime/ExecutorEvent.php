@@ -8,6 +8,9 @@ use Superwire\Laravel\Data\Events\AgentCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionCompletedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionFailedEvent;
+use Superwire\Laravel\Data\Events\ContextCompactionStartedEvent;
 use Superwire\Laravel\Data\Events\McpCallCompletedEvent;
 use Superwire\Laravel\Data\Events\McpCallFailedEvent;
 use Superwire\Laravel\Data\Events\McpCallStartedEvent;
@@ -29,7 +32,7 @@ use Superwire\Laravel\Enums\ExecutorEventKind;
 final readonly class ExecutorEvent
 {
     /**
-     * @param AgentCompletedEvent|AgentLoopCompletedEvent|AgentLoopStartedEvent|AgentStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
+     * @param AgentCompletedEvent|AgentLoopCompletedEvent|AgentLoopStartedEvent|AgentStartedEvent|ContextCompactionCompletedEvent|ContextCompactionFailedEvent|ContextCompactionStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
      */
     public function __construct(
         public ExecutorEventKind $kind,
@@ -51,6 +54,9 @@ final readonly class ExecutorEvent
             ExecutorEventKind::WorkflowPlanned => WorkflowPlannedEvent::fromArray($data),
             ExecutorEventKind::AgentLoopStarted => AgentLoopStartedEvent::fromArray($data),
             ExecutorEventKind::AgentLoopCompleted => AgentLoopCompletedEvent::fromArray($data),
+            ExecutorEventKind::ContextCompactionStarted => ContextCompactionStartedEvent::fromArray($data),
+            ExecutorEventKind::ContextCompactionCompleted => ContextCompactionCompletedEvent::fromArray($data),
+            ExecutorEventKind::ContextCompactionFailed => ContextCompactionFailedEvent::fromArray($message ?? 'Unknown error', $data),
             ExecutorEventKind::AgentStarted => AgentStartedEvent::fromArray($data),
             ExecutorEventKind::AgentCompleted => AgentCompletedEvent::fromArray($data),
             ExecutorEventKind::ToolCallStarted => ToolCallStartedEvent::fromArray($data),
@@ -113,6 +119,14 @@ final readonly class ExecutorEvent
         if ($this->event instanceof WorkflowFailedEvent) {
 
             $array[ 'message' ] = $this->event->message;
+
+        } elseif ($this->event instanceof ContextCompactionFailedEvent) {
+
+            $array[ 'message' ] = $this->event->message;
+
+            if ($eventData !== []) {
+                $array[ 'data' ] = $eventData;
+            }
 
         } elseif ($eventData !== []) {
 

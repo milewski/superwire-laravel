@@ -10,6 +10,9 @@ enum ExecutorEventKind: string
     case WorkflowPlanned = 'workflow_planned';
     case AgentLoopStarted = 'agent_loop_started';
     case AgentLoopCompleted = 'agent_loop_completed';
+    case ContextCompactionStarted = 'context_compaction_started';
+    case ContextCompactionCompleted = 'context_compaction_completed';
+    case ContextCompactionFailed = 'context_compaction_failed';
     case AgentStarted = 'agent_started';
     case AgentCompleted = 'agent_completed';
     case ToolCallStarted = 'tool_call_started';
