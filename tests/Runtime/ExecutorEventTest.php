@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Tests\Runtime;
 
 use Superwire\Laravel\Data\Events\AgentCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentFileCreatedEvent;
+use Superwire\Laravel\Data\Events\AgentFileDeletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
@@ -48,6 +50,8 @@ final class ExecutorEventTest extends TestCase
             'context_compaction_started',
             'context_compaction_completed',
             'context_compaction_failed',
+            'agent_file_created',
+            'agent_file_deleted',
             'agent_started',
             'agent_completed',
             'tool_call_started',
@@ -159,6 +163,54 @@ final class ExecutorEventTest extends TestCase
         $this->assertSame('gpt-4', $event->event->model);
         $this->assertSame([ 'tool_a', 'tool_b' ], $event->event->tools);
         $this->assertSame(2, $event->event->iterationIndex);
+    }
+
+    public function test_it_creates_agent_file_events(): void
+    {
+        $created = ExecutorEvent::fromArray([
+            'kind' => 'agent_file_created',
+            'agent_name' => 'reviewer',
+            'data' => [
+                'file_id' => 'file-fe-test',
+                'filename' => 'example.json',
+                'purpose' => 'file-extract',
+                'bytes' => 19,
+            ],
+        ]);
+        $deleted = ExecutorEvent::fromArray([
+            'kind' => 'agent_file_deleted',
+            'agent_name' => 'reviewer',
+            'data' => [
+                'file_id' => 'file-fe-test',
+                'filename' => 'example.json',
+                'purpose' => 'file-extract',
+            ],
+        ]);
+
+        $this->assertSame(ExecutorEventKind::AgentFileCreated, $created->kind);
+        $this->assertSame('reviewer', $created->agentName);
+        $this->assertInstanceOf(AgentFileCreatedEvent::class, $created->event);
+        $this->assertSame('file-fe-test', $created->event->fileId);
+        $this->assertSame('example.json', $created->event->filename);
+        $this->assertSame('file-extract', $created->event->purpose);
+        $this->assertSame(19, $created->event->bytes);
+        $this->assertSame([
+            'kind' => 'agent_file_created',
+            'agent_name' => 'reviewer',
+            'data' => [
+                'file_id' => 'file-fe-test',
+                'filename' => 'example.json',
+                'purpose' => 'file-extract',
+                'bytes' => 19,
+            ],
+        ], $created->toArray());
+
+        $this->assertSame(ExecutorEventKind::AgentFileDeleted, $deleted->kind);
+        $this->assertSame('reviewer', $deleted->agentName);
+        $this->assertInstanceOf(AgentFileDeletedEvent::class, $deleted->event);
+        $this->assertSame('file-fe-test', $deleted->event->fileId);
+        $this->assertSame('example.json', $deleted->event->filename);
+        $this->assertSame('file-extract', $deleted->event->purpose);
     }
 
     public function test_it_creates_agent_loop_started_event(): void

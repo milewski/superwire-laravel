@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Superwire\Laravel\Runtime;
 
 use Superwire\Laravel\Data\Events\AgentCompletedEvent;
+use Superwire\Laravel\Data\Events\AgentFileCreatedEvent;
+use Superwire\Laravel\Data\Events\AgentFileDeletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopCompletedEvent;
 use Superwire\Laravel\Data\Events\AgentLoopStartedEvent;
 use Superwire\Laravel\Data\Events\AgentStartedEvent;
@@ -32,7 +34,7 @@ use Superwire\Laravel\Enums\ExecutorEventKind;
 final readonly class ExecutorEvent
 {
     /**
-     * @param AgentCompletedEvent|AgentLoopCompletedEvent|AgentLoopStartedEvent|AgentStartedEvent|ContextCompactionCompletedEvent|ContextCompactionFailedEvent|ContextCompactionStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
+     * @param AgentCompletedEvent|AgentFileCreatedEvent|AgentFileDeletedEvent|AgentLoopCompletedEvent|AgentLoopStartedEvent|AgentStartedEvent|ContextCompactionCompletedEvent|ContextCompactionFailedEvent|ContextCompactionStartedEvent|McpCallCompletedEvent|McpCallFailedEvent|McpCallStartedEvent|McpToolSchemaFetchCompletedEvent|McpToolSchemaFetchFailedEvent|McpToolSchemaFetchStartedEvent|McpToolValidationCompletedEvent|McpToolValidationFailedEvent|McpToolValidationStartedEvent|ToolCallCompletedEvent|ToolCallFailedEvent|ToolCallStartedEvent|WorkflowCompletedEvent|WorkflowFailedEvent|WorkflowPlannedEvent|WorkflowStartedEvent $event
      */
     public function __construct(
         public ExecutorEventKind $kind,
@@ -57,6 +59,8 @@ final readonly class ExecutorEvent
             ExecutorEventKind::ContextCompactionStarted => ContextCompactionStartedEvent::fromArray($data),
             ExecutorEventKind::ContextCompactionCompleted => ContextCompactionCompletedEvent::fromArray($data),
             ExecutorEventKind::ContextCompactionFailed => ContextCompactionFailedEvent::fromArray($message ?? 'Unknown error', $data),
+            ExecutorEventKind::AgentFileCreated => AgentFileCreatedEvent::fromArray($data),
+            ExecutorEventKind::AgentFileDeleted => AgentFileDeletedEvent::fromArray($data),
             ExecutorEventKind::AgentStarted => AgentStartedEvent::fromArray($data),
             ExecutorEventKind::AgentCompleted => AgentCompletedEvent::fromArray($data),
             ExecutorEventKind::ToolCallStarted => ToolCallStartedEvent::fromArray($data),
